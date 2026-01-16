@@ -1,3 +1,5 @@
+import org.gradle.internal.os.OperatingSystem
+
 plugins {
     id 'java'
 }
@@ -14,15 +16,48 @@ repositories {
     mavenCentral()
 }
 
+// OS-spezifische Pfade
+def hytaleServerJar
+def hytaleAssetsZip
+def singleplayerModsDir
+
+if (OperatingSystem.current().isWindows()) {
+    def appData = System.getenv('APPDATA')
+    hytaleServerJar = "${appData}/Hytale/install/release/package/game/latest/Server/HytaleServer.jar"
+    hytaleAssetsZip = "${appData}/Hytale/install/release/package/game/latest/Assets.zip"
+    singleplayerModsDir = file("${appData}/Hytale/UserData/Mods")
+} else if (OperatingSystem.current().isMacOsX()) {
+    def home = System.getProperty('user.home')
+    hytaleServerJar = "${home}/Library/Application Support/Hytale/install/release/package/game/latest/Server/HytaleServer.jar"
+    hytaleAssetsZip = "${home}/Library/Application Support/Hytale/install/release/package/game/latest/Assets.zip"
+    singleplayerModsDir = file("${home}/Library/Application Support/Hytale/UserData/Mods")
+} else {
+    // Linux fallback
+    def home = System.getProperty('user.home')
+    hytaleServerJar = "${home}/.hytale/install/release/package/game/latest/Server/HytaleServer.jar"
+    hytaleAssetsZip = "${home}/.hytale/install/release/package/game/latest/Assets.zip"
+    singleplayerModsDir = file("${home}/.hytale/UserData/Mods")
+}
+
+// Überschreibe mit gradle.properties falls vorhanden
+if (project.hasProperty('hytale_server_jar')) {
+    hytaleServerJar = project.property('hytale_server_jar')
+}
+if (project.hasProperty('hytale_assets_zip')) {
+    hytaleAssetsZip = project.property('hytale_assets_zip')
+}
+if (project.hasProperty('hytale_singleplayer_mods')) {
+    singleplayerModsDir = file(project.property('hytale_singleplayer_mods'))
+}
+
 dependencies {
-    compileOnly files(project.property('hytale_server_jar'))
+    compileOnly files(hytaleServerJar)
     compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
 }
 
 // Server läuft im Projekt unter /run
 def serverDir = file("${projectDir}/run")
 def serverModsDir = file("${serverDir}/mods")
-def singleplayerModsDir = file("C:\\Users\\gaukh\\AppData\\Roaming\\Hytale\\UserData\\Mods")
 
 tasks.register('setupServer') {
     doLast {
@@ -33,13 +68,13 @@ tasks.register('setupServer') {
 
         if (!serverJar.exists()) {
             copy {
-                from project.property('hytale_server_jar')
+                from hytaleServerJar
                 into serverDir
             }
         }
         if (!assetsZip.exists()) {
             copy {
-                from project.property('hytale_assets_zip')
+                from hytaleAssetsZip
                 into serverDir
             }
         }

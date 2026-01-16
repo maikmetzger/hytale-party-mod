@@ -1,0 +1,37 @@
+$C = "../Common.ui";
+
+@InputBoxStyle = ButtonStyle(
+    Default: (Background: $C.@InputBoxBackground),
+    Hovered: (Background: $C.@InputBoxHoveredBackground),
+    Pressed: (Background: $C.@InputBoxSelectedBackground)
+);
+
+// Party member entry with InputBox background
+Button #Button {
+    Style: @InputBoxStyle;
+    Anchor: (Height: 44, Bottom: 6);
+    Padding: (Horizontal: 12, Vertical: 8);
+    LayoutMode: Left;
+
+    // Online status indicator
+    Group #StatusBadge {
+        Anchor: (Width: 16, Height: 16, Left: 4);
+        Background: (TexturePath: "../Icons/SameWorld.png");
+        Visible: false;
+    }
+
+    // Player name
+    Label #Name {
+        Text: "";
+        Style: (FontSize: 15, TextColor: #b7b8b9, VerticalAlignment: Center);
+        Anchor: (Left: 8);
+        FlexWeight: 1;
+    }
+
+    // Role/Status text (Leader, Online, Offline)
+    Label #Subtext {
+        Text: "";
+        Style: (FontSize: 13, TextColor: #96a9be(0.6), VerticalAlignment: Center, HorizontalAlignment: End);
+        Anchor: (Width: 70, Right: 4);
+    }
+}

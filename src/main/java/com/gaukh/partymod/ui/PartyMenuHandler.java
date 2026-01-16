@@ -25,7 +25,8 @@ public class PartyMenuHandler {
         "invite",  this::handleInvite,
         "kick",    this::handleKick,
         "leave",   this::handleLeave,
-        "disband", this::handleDisband
+        "disband", this::handleDisband,
+        "close",   target -> false
     );
 
     public PartyMenuHandler(@Nonnull PartyManager partyManager, @Nonnull PlayerRef playerRef) {

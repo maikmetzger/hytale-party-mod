@@ -1,55 +1,322 @@
 $C = "Common.ui";
 
+@SectionTitleStyle = LabelStyle(
+    FontSize: 14,
+    TextColor: #778292,
+    RenderBold: true,
+    RenderUppercase: true,
+    VerticalAlignment: Center
+);
+
+@CountStyle = LabelStyle(
+    FontSize: 14,
+    TextColor: #96a9be,
+    RenderBold: true,
+    VerticalAlignment: Center
+);
+
 $C.@PageOverlay {
     LayoutMode: Middle;
 
     $C.@DecoratedContainer {
-        Anchor: (Width: 532);
+        @CloseButton = true;
+        Anchor: (Width: 420, Height: 520);
 
         #Title {
             $C.@Title {
-                @Text = "Party Menu";
+                @Text = "Party";
             }
         }
 
         #Content {
             LayoutMode: Top;
-            Padding: (Full: 16);
 
-            Group {
-                LayoutMode: Center;
+            // ===== PENDING INVITE SECTION =====
+            Group #InviteSection {
+                LayoutMode: Top;
+                Visible: false;
+                Background: (Color: #1a2633(0.8));
+                Padding: (Full: 12);
+                Anchor: (Bottom: 12);
 
-                Group #PartyPanel {
-                    Anchor: (Top: 16);
-                    LayoutMode: Top;
+                Label {
+                    Text: "You have a party invite!";
+                    Style: (FontSize: 15, TextColor: #ccb588, RenderBold: true, HorizontalAlignment: Center);
+                    Anchor: (Bottom: 8);
+                }
 
-                    Group #InviteSection {
-                        LayoutMode: Top;
-                        Anchor: (Top: 16);
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 40);
+
+                    $C.@TextButton #AcceptInvite {
+                        @Anchor = (Right: 6);
+                        Text: "Accept";
+                        FlexWeight: 1;
                     }
 
-                    Group #PartyMembersList {
+                    $C.@SecondaryTextButton #DeclineInvite {
+                        @Anchor = (Left: 6);
+                        Text: "Decline";
+                        FlexWeight: 1;
+                    }
+                }
+            }
+
+            // ===== NO PARTY VIEW =====
+            Group #NoPartyView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                Group {
+                    LayoutMode: Middle;
+                    FlexWeight: 1;
+
+                    Group {
                         LayoutMode: Top;
-                        Anchor: (Top: 16);
+                        Anchor: (Width: 300);
 
                         Label {
-                            @Text = "Party Members:";
-                            Style: (FontSize: 18, RenderBold: true, TextColor: #bb3333);
+                            Text: "You're not in a party";
+                            Style: (FontSize: 18, TextColor: #96a9be, HorizontalAlignment: Center);
+                            Anchor: (Bottom: 16);
+                        }
+
+                        $C.@TextButton #CreatePartyButton {
+                            Anchor: (Height: 48);
+                            Text: "Create Party";
                         }
                     }
+                }
+            }
 
-                    Group #ActionButtons {
-                        LayoutMode: Top;
-                        Anchor: (Top: 16);
+            // ===== PARTY VIEW =====
+            Group #PartyView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Party Members Header
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 24, Bottom: 8);
+
+                    Label {
+                        Text: "Members";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
                     }
 
-                    Group #PlayersList {
+                    Label #MemberCount {
+                        Text: "0/8";
+                        Style: @CountStyle;
+                    }
+                }
+
+                // Members List
+                Group #PartyMembersList {
+                    LayoutMode: TopScrolling;
+                    ScrollbarStyle: (...$C.@DefaultScrollbarStyle, OnlyVisibleWhenHovered: true);
+                    Padding: (Left: 14);
+                    FlexWeight: 1;
+                }
+
+                $C.@PanelSeparatorFancy {
+                    @Anchor = (Top: 12, Bottom: 12);
+                }
+
+                // Action Buttons
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 44);
+
+                    $C.@TextButton #InvitePlayerButton {
+                        @Anchor = (Right: 6);
+                        Text: "Invite";
+                        FlexWeight: 1;
+                    }
+
+                    $C.@CancelTextButton #LeavePartyButton {
+                        @Anchor = (Left: 6);
+                        Text: "Leave";
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Leader-only: Disband button
+                Group #LeaderActions {
+                    LayoutMode: Left;
+                    Anchor: (Height: 36, Top: 8);
+                    Visible: false;
+
+                    $C.@SmallSecondaryTextButton #DisbandButton {
+                        @Text = "Disband Party";
+                        FlexWeight: 1;
+                    }
+                }
+            }
+
+            // ===== INVITE PLAYERS VIEW =====
+            Group #InvitePlayersView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Header with back button
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 32, Bottom: 8);
+
+                    $C.@SmallSecondaryTextButton #BackToPartyButton {
+                        @Text = "Back";
+                        Anchor: (Width: 100, Right: 16);
+                    }
+
+                    Label {
+                        Text: "Invite Players";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Players List
+                Group #PlayersList {
+                    LayoutMode: TopScrolling;
+                    ScrollbarStyle: (...$C.@DefaultScrollbarStyle, OnlyVisibleWhenHovered: true);
+                    Padding: (Left: 14);
+                    FlexWeight: 1;
+                }
+            }
+
+            // ===== PLAYER ACTION VIEW =====
+            Group #PlayerActionView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Header with back button and player name
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 32, Bottom: 16);
+
+                    $C.@SmallSecondaryTextButton #BackToPartyFromAction {
+                        @Text = "Back";
+                        Anchor: (Width: 100, Right: 16);
+                    }
+
+                    Label #SelectedPlayerName {
+                        Text: "Player";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Player info box
+                Group {
+                    Background: (TexturePath: "Icons/ObjectivePanelContainer.png", Border: 15);
+                    Anchor: (Height: 60, Bottom: 16);
+                    Padding: (Horizontal: 16, Vertical: 12);
+                    LayoutMode: Left;
+
+                    Group #SelectedPlayerBadge {
+                        Anchor: (Width: 16, Height: 16, Left: 4);
+                        Background: (TexturePath: "Icons/SameWorld.png");
+                    }
+
+                    Label #SelectedPlayerRole {
+                        Text: "Member";
+                        Style: (FontSize: 15, TextColor: #96a9be, VerticalAlignment: Center);
+                        Anchor: (Left: 12);
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Action buttons
+                Group {
+                    LayoutMode: Top;
+                    FlexWeight: 1;
+
+                    // Promote button
+                    $C.@TextButton #PromoteButton {
+                        Anchor: (Height: 48, Bottom: 8);
+                        Text: "Promote to Moderator";
+                    }
+
+                    // Demote button
+                    $C.@SecondaryTextButton #DemoteButton {
+                        Anchor: (Height: 48, Bottom: 8);
+                        Text: "Demote to Member";
+                    }
+
+                    // Kick button
+                    $C.@CancelTextButton #KickPlayerButton {
+                        Anchor: (Height: 48, Bottom: 16);
+                        Text: "Kick from Party";
+                    }
+
+                    // Transfer leadership button (leader only)
+                    $C.@TextButton #TransferLeadershipButton {
+                        Anchor: (Height: 48);
+                        Text: "Make Party Leader";
+                    }
+                }
+            }
+
+            // ===== CONFIRMATION VIEW =====
+            Group #ConfirmView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                Group {
+                    LayoutMode: Middle;
+                    FlexWeight: 1;
+
+                    Group {
                         LayoutMode: Top;
-                        Anchor: (Top: 16);
+                        Anchor: (Width: 300);
+
+                        Label #ConfirmTitle {
+                            Text: "Confirm";
+                            Style: (
+                                FontSize: 20,
+                                TextColor: #ccb588,
+                                RenderBold: true,
+                                HorizontalAlignment: Center
+                            );
+                            Anchor: (Bottom: 12);
+                        }
+
+                        Label #ConfirmMessage {
+                            Text: "Are you sure?";
+                            Style: (
+                                FontSize: 15,
+                                TextColor: #96a9be,
+                                HorizontalAlignment: Center
+                            );
+                            Anchor: (Bottom: 24);
+                        }
+
+                        Group {
+                            LayoutMode: Left;
+                            Anchor: (Height: 48);
+
+                            $C.@SecondaryTextButton #CancelConfirmButton {
+                                @Anchor = (Right: 6);
+                                Text: "Cancel";
+                                FlexWeight: 1;
+                            }
+
+                            $C.@CancelTextButton #ConfirmActionButton {
+                                @Anchor = (Left: 6);
+                                Text: "Confirm";
+                                FlexWeight: 1;
+                            }
+                        }
                     }
                 }
             }
         }
     }
 }
-

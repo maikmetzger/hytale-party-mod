@@ -1,141 +1,244 @@
 package com.gaukh.partymod.party;
 
-
 import javax.annotation.Nonnull;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.io.File;
+import java.sql.*;
+import java.util.*;
 
+/**
+ * SQLite-based storage for party persistence.
+ * <p>
+ * Handles all database operations:
+ * - init() to create database and tables
+ * - saveParty() to insert/update a party
+ * - loadAllParties() to load all parties on startup
+ * - deleteParty() to remove a party
+ * - removeMember() to remove a single member
+ *
+ * @see Party for party data model
+ * @see PartyManager for business logic
+ */
 public class PartyStorage {
 
-    private final Party party;
-
-    public PartyStorage(@Nonnull Party party) {
-        this.party = party;
-    }
+    private static final String DB_PATH = "mods/PartyMod/data/parties.db";
+    private static Connection connection;
 
     /**
-     * Converts to simple JSON string for persistence.
+     * Initialize database connection and create tables if needed.
      */
-    @Nonnull
-    public String toJson() {
-        StringBuilder members = new StringBuilder("[");
-        boolean first = true;
-
-        for (UUID uuid : party.getMemberUuids()) {
-            if (!first) members.append(",");
-            members.append("\"").append(uuid.toString()).append("\"");
-            first = false;
-        }
-
-        members.append("]");
-
-        return String.format(
-                "{\"Id\":\"%s\",\"LeaderUuid\":\"%s\",\"MemberUuids\":%s,\"CreatedAt\":%d}",
-                party.getId(), party.getLeaderUuid().toString(), members.toString(), party.getCreatedAt()
-        );
-    }
-
-    /**
-     * Parses a Party from a simple JSON string.
-     */
-    @Nonnull
-    public static Party fromJson(@Nonnull String json) {
-        Party party = new Party();
-
-        party.setId(extractJsonString(json, "Id"));
-        party.setLeaderUuid(UUID.fromString(extractJsonString(json, "LeaderUuid")));
-        party.setCreatedAt(extractJsonLong(json));
-
-        // Parse member UUIDs array
-        String membersArray = extractJsonArray(json);
-
-        if (membersArray.isEmpty()) return party;
-
-        String[] parts = membersArray.replace("[", "").replace("]", "").replace("\"", "").split(",");
-
-        for (String part : parts) {
-            String trimmed = part.trim();
-
-            if (trimmed.isEmpty()) return party;
-
-            party.addMember(UUID.fromString(trimmed));
-        }
-
-        return party;
-    }
-
-    private static String extractJsonString(String json, String key) {
-        String pattern = "\"" + key + "\":\"";
-
-        int start = json.indexOf(pattern);
-
-        if (start == -1) return "";
-
-        start += pattern.length();
-
-        int end = json.indexOf("\"", start);
-
-        if (end == -1) return "";
-
-        return json.substring(start, end);
-    }
-
-    private static long extractJsonLong(String json) {
-        String pattern = "\"" + "CreatedAt" + "\":";
-
-        int start = json.indexOf(pattern);
-
-        if (start == -1) return 0L;
-
-        start += pattern.length();
-
-        int end = start;
-
-        while (end < json.length() && Character.isDigit(json.charAt(end))) {
-            end++;
-        }
-
+    public static void init() throws SQLException {
+        // Load SQLite JDBC driver
         try {
-            return Long.parseLong(json.substring(start, end));
-        } catch (NumberFormatException e) {
-            return 0L;
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            throw new SQLException("SQLite JDBC driver not found", e);
+        }
+
+        File dbFile = new File(DB_PATH);
+        dbFile.getParentFile().mkdirs();
+
+        connection = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        connection.setAutoCommit(true);
+
+        // Enable foreign keys
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("PRAGMA foreign_keys = ON");
+        }
+
+        createTables();
+    }
+
+    public static boolean isInitialized() {
+        return connection != null;
+    }
+
+    private static void createTables() throws SQLException {
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS parties (
+                    id TEXT PRIMARY KEY,
+                    leader_uuid TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+            """);
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS party_members (
+                    party_id TEXT NOT NULL,
+                    member_uuid TEXT NOT NULL,
+                    role INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (party_id, member_uuid),
+                    FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE
+                )
+            """);
+        }
+
+        // Migration: Add role column if it doesn't exist (for existing databases)
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE party_members ADD COLUMN role INTEGER NOT NULL DEFAULT 0");
+        } catch (SQLException e) {
+            // Column already exists - ignore
         }
     }
 
-    private static String extractJsonArray(String json) {
-        String pattern = "\"" + "MemberUuids" + "\":";
+    /**
+     * Save or update a party in the database.
+     */
+    public static void saveParty(@Nonnull Party party) throws SQLException {
+        if (connection == null) return;
 
-        int start = json.indexOf(pattern);
+        // Upsert party
+        try (PreparedStatement stmt = connection.prepareStatement("""
+            INSERT INTO parties (id, leader_uuid, created_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET leader_uuid = excluded.leader_uuid
+        """)) {
+            stmt.setString(1, party.getId());
+            stmt.setString(2, party.getLeaderUuid().toString());
+            stmt.setLong(3, party.getCreatedAt());
+            stmt.executeUpdate();
+        }
 
-        if (start == -1) return "[]";
+        // Clear existing members and re-insert
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "DELETE FROM party_members WHERE party_id = ?")) {
+            stmt.setString(1, party.getId());
+            stmt.executeUpdate();
+        }
 
-        start += pattern.length();
-
-        int bracketStart = json.indexOf("[", start);
-
-        if (bracketStart == -1) return "[]";
-
-        int bracketEnd = json.indexOf("]", bracketStart);
-
-        if (bracketEnd == -1) return "[]";
-
-        return json.substring(bracketStart, bracketEnd + 1);
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT INTO party_members (party_id, member_uuid, role) VALUES (?, ?, ?)")) {
+            for (UUID memberUuid : party.getMemberUuids()) {
+                stmt.setString(1, party.getId());
+                stmt.setString(2, memberUuid.toString());
+                stmt.setInt(3, party.getRole(memberUuid).getLevel());
+                stmt.addBatch();
+            }
+            stmt.executeBatch();
+        }
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
+    /**
+     * Load all parties from the database.
+     */
+    @Nonnull
+    public static List<Party> loadAllParties() throws SQLException {
+        if (connection == null) {
+            return new ArrayList<>();
+        }
 
-        if (o == null || getClass() != o.getClass()) return false;
+        Map<String, Party> parties = new HashMap<>();
 
-        PartyStorage other = (PartyStorage) o;
+        // Load party base data
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT id, leader_uuid, created_at FROM parties")) {
+            while (rs.next()) {
+                Party party = new Party();
+                party.setId(rs.getString("id"));
+                party.setLeaderUuid(UUID.fromString(rs.getString("leader_uuid")));
+                party.setCreatedAt(rs.getLong("created_at"));
+                parties.put(party.getId(), party);
+            }
+        }
 
-        return Objects.equals(party.getId(), other.party.getId());
+        // Load members with roles
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT party_id, member_uuid, role FROM party_members")) {
+            while (rs.next()) {
+                String partyId = rs.getString("party_id");
+                UUID memberUuid = UUID.fromString(rs.getString("member_uuid"));
+                int roleLevel = rs.getInt("role");
+                Party party = parties.get(partyId);
+                if (party != null) {
+                    party.addMember(memberUuid);
+                    party.setRole(memberUuid, PartyRole.fromLevel(roleLevel));
+                }
+            }
+        }
+
+        return new ArrayList<>(parties.values());
     }
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(party.getId());
+    /**
+     * Delete a party from the database.
+     */
+    public static void deleteParty(@Nonnull String partyId) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "DELETE FROM parties WHERE id = ?")) {
+            stmt.setString(1, partyId);
+            stmt.executeUpdate();
+        }
+        // Members are deleted automatically via ON DELETE CASCADE
+    }
+
+    /**
+     * Remove a single member from a party.
+     */
+    public static void removeMember(@Nonnull String partyId, @Nonnull UUID memberUuid) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "DELETE FROM party_members WHERE party_id = ? AND member_uuid = ?")) {
+            stmt.setString(1, partyId);
+            stmt.setString(2, memberUuid.toString());
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Add a member to a party.
+     */
+    public static void addMember(@Nonnull String partyId, @Nonnull UUID memberUuid) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT OR IGNORE INTO party_members (party_id, member_uuid) VALUES (?, ?)")) {
+            stmt.setString(1, partyId);
+            stmt.setString(2, memberUuid.toString());
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Update the role of a member.
+     */
+    public static void updateMemberRole(@Nonnull String partyId, @Nonnull UUID memberUuid, @Nonnull PartyRole role) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "UPDATE party_members SET role = ? WHERE party_id = ? AND member_uuid = ?")) {
+            stmt.setInt(1, role.getLevel());
+            stmt.setString(2, partyId);
+            stmt.setString(3, memberUuid.toString());
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Update the leader of a party.
+     */
+    public static void updateLeader(@Nonnull String partyId, @Nonnull UUID newLeaderUuid) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "UPDATE parties SET leader_uuid = ? WHERE id = ?")) {
+            stmt.setString(1, newLeaderUuid.toString());
+            stmt.setString(2, partyId);
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Close the database connection.
+     */
+    public static void close() {
+        if (connection != null) {
+            try {
+                connection.close();
+            } catch (SQLException ignored) {
+            }
+        }
     }
 }

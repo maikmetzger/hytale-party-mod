@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:hytale-docs.pages.dev)"
+      "WebFetch(domain:hytale-docs.pages.dev)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ]
   }
 }

@@ -1,11 +1,13 @@
 package com.gaukh.partymod.party;
 
+import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,9 +30,25 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PartyManager {
 
+    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
+
     private final Map<String, Party> parties = new ConcurrentHashMap<>();
     private final Map<UUID, String> playerPartyMap = new ConcurrentHashMap<>();
     private final Map<UUID, PartyInvite> pendingInvites = new ConcurrentHashMap<>();
+
+    public PartyManager() {
+        try {
+            List<Party> loadedParties = PartyStorage.loadAllParties();
+            LOGGER.atInfo().log("Loading %d parties from storage", loadedParties.size());
+            for (Party party : loadedParties) {
+                parties.put(party.getId(), party);
+                party.getMemberUuids().forEach(uuid -> playerPartyMap.put(uuid, party.getId()));
+                LOGGER.atInfo().log("Loaded party %s with %d members", party.getId(), party.getMemberCount());
+            }
+        } catch (SQLException e) {
+            LOGGER.atSevere().withCause(e).log("Failed to load parties from storage");
+        }
+    }
 
     @Nullable
     public Party createParty(@Nonnull UUID leaderUuid) {
@@ -41,6 +59,13 @@ public class PartyManager {
         Party party = new Party(leaderUuid);
         parties.put(party.getId(), party);
         playerPartyMap.put(leaderUuid, party.getId());
+
+        try {
+            PartyStorage.saveParty(party);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to save party to storage");
+        }
+
         return party;
     }
 
@@ -52,6 +77,12 @@ public class PartyManager {
             playerPartyMap.remove(memberUuid);
         }
         broadcastToParty(party, Message.raw("Party has been disbanded."));
+
+        try {
+            PartyStorage.deleteParty(partyId);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to delete party from storage");
+        }
     }
 
     @Nullable
@@ -77,6 +108,14 @@ public class PartyManager {
             return false;
         }
 
+        // Check if inviter has permission to invite (Leader, Admin, Moderator, or Member)
+        if (!party.isLeader(inviterUuid)) {
+            PartyRole inviterRole = party.getRole(inviterUuid);
+            if (inviterRole.getLevel() < PartyRole.MEMBER.getLevel()) {
+                return false; // Guests cannot invite
+            }
+        }
+
         PartyInvite invite = new PartyInvite(inviterUuid, inviteeUuid, party.getId(), 60);
         pendingInvites.put(inviteeUuid, invite);
         return true;
@@ -96,6 +135,12 @@ public class PartyManager {
 
         party.addMember(inviteeUuid);
         playerPartyMap.put(inviteeUuid, party.getId());
+
+        try {
+            PartyStorage.addMember(party.getId(), inviteeUuid);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
+        }
 
         PlayerRef inviteeRef = Universe.get().getPlayer(inviteeUuid);
         String inviteeName = inviteeRef != null ? inviteeRef.getUsername() : inviteeUuid.toString();
@@ -137,6 +182,13 @@ public class PartyManager {
                 party.removeMember(playerUuid);
                 playerPartyMap.remove(playerUuid);
                 broadcastToParty(party, Message.raw(playerName + " left the party."));
+
+                try {
+                    PartyStorage.updateLeader(partyId, newLeader);
+                    PartyStorage.removeMember(partyId, playerUuid);
+                } catch (SQLException e) {
+                    LOGGER.atWarning().withCause(e).log("Failed to update storage after leader left");
+                }
             } else {
                 disbandParty(partyId);
                 return true;
@@ -146,6 +198,12 @@ public class PartyManager {
             playerPartyMap.remove(playerUuid);
             String message = wasKicked ? playerName + " was kicked from the party." : playerName + " left the party.";
             broadcastToParty(party, Message.raw(message));
+
+            try {
+                PartyStorage.removeMember(partyId, playerUuid);
+            } catch (SQLException e) {
+                LOGGER.atWarning().withCause(e).log("Failed to remove member from storage");
+            }
         }
 
         if (wasKicked && playerRef != null) {
@@ -154,15 +212,100 @@ public class PartyManager {
         return true;
     }
 
-    public boolean kickPlayer(@Nonnull UUID leaderUuid, @Nonnull UUID targetUuid) {
+    public boolean kickPlayer(@Nonnull UUID actorUuid, @Nonnull UUID targetUuid) {
+        Party party = getPartyByPlayer(actorUuid);
+        if (party == null || !party.isMember(targetUuid)) {
+            return false;
+        }
+        // Leader can kick anyone, others need higher role
+        if (!party.isLeader(actorUuid)) {
+            PartyRole actorRole = party.getRole(actorUuid);
+            PartyRole targetRole = party.getRole(targetUuid);
+            if (!actorRole.canKick(targetRole)) {
+                return false;
+            }
+        }
+        return leaveParty(targetUuid, true);
+    }
+
+    public boolean promotePlayer(@Nonnull UUID actorUuid, @Nonnull UUID targetUuid) {
+        Party party = getPartyByPlayer(actorUuid);
+        if (party == null || !party.isMember(targetUuid)) {
+            return false;
+        }
+        // Only leader can promote
+        if (!party.isLeader(actorUuid)) {
+            return false;
+        }
+        if (party.isLeader(targetUuid)) {
+            return false;
+        }
+
+        boolean promoted = party.promote(targetUuid);
+        if (promoted) {
+            try {
+                PartyStorage.updateMemberRole(party.getId(), targetUuid, party.getRole(targetUuid));
+            } catch (SQLException e) {
+                LOGGER.atWarning().withCause(e).log("Failed to update role in storage");
+            }
+
+            PlayerRef targetRef = Universe.get().getPlayer(targetUuid);
+            String targetName = targetRef != null ? targetRef.getUsername() : targetUuid.toString();
+            broadcastToParty(party, Message.raw(targetName + " was promoted to " + party.getRoleDisplayName(targetUuid) + "."));
+        }
+        return promoted;
+    }
+
+    public boolean demotePlayer(@Nonnull UUID actorUuid, @Nonnull UUID targetUuid) {
+        Party party = getPartyByPlayer(actorUuid);
+        if (party == null || !party.isMember(targetUuid)) {
+            return false;
+        }
+        // Only leader can demote
+        if (!party.isLeader(actorUuid)) {
+            return false;
+        }
+        if (party.isLeader(targetUuid)) {
+            return false;
+        }
+
+        boolean demoted = party.demote(targetUuid);
+        if (demoted) {
+            try {
+                PartyStorage.updateMemberRole(party.getId(), targetUuid, party.getRole(targetUuid));
+            } catch (SQLException e) {
+                LOGGER.atWarning().withCause(e).log("Failed to update role in storage");
+            }
+
+            PlayerRef targetRef = Universe.get().getPlayer(targetUuid);
+            String targetName = targetRef != null ? targetRef.getUsername() : targetUuid.toString();
+            broadcastToParty(party, Message.raw(targetName + " was demoted to " + party.getRoleDisplayName(targetUuid) + "."));
+        }
+        return demoted;
+    }
+
+    public boolean transferLeadership(@Nonnull UUID leaderUuid, @Nonnull UUID newLeaderUuid) {
         Party party = getPartyByPlayer(leaderUuid);
         if (party == null || !party.isLeader(leaderUuid)) {
             return false;
         }
-        if (!party.isMember(targetUuid)) {
+        if (!party.isMember(newLeaderUuid) || party.isLeader(newLeaderUuid)) {
             return false;
         }
-        return leaveParty(targetUuid, true);
+
+        party.transferLeadership(newLeaderUuid);
+
+        try {
+            PartyStorage.updateLeader(party.getId(), newLeaderUuid);
+            PartyStorage.updateMemberRole(party.getId(), leaderUuid, party.getRole(leaderUuid));
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to update leadership in storage");
+        }
+
+        PlayerRef newLeaderRef = Universe.get().getPlayer(newLeaderUuid);
+        String newLeaderName = newLeaderRef != null ? newLeaderRef.getUsername() : newLeaderUuid.toString();
+        broadcastToParty(party, Message.raw(newLeaderName + " is now the party leader."));
+        return true;
     }
 
     public void broadcastToParty(@Nonnull Party party, @Nonnull Message message) {

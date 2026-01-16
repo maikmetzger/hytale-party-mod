@@ -2,11 +2,13 @@ package com.gaukh.partymod;
 
 import com.gaukh.partymod.commands.PartyCommand;
 import com.gaukh.partymod.party.PartyManager;
+import com.gaukh.partymod.party.PartyStorage;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 
 import javax.annotation.Nonnull;
+import java.sql.SQLException;
 import java.util.logging.Level;
 
 public class PartyMod extends JavaPlugin {
@@ -24,9 +26,22 @@ public class PartyMod extends JavaPlugin {
 
     @Override
     protected void setup() {
+        try {
+            PartyStorage.init();
+            LOGGER.atInfo().log("PartyStorage initialized");
+        } catch (SQLException e) {
+            LOGGER.atSevere().withCause(e).log("Failed to initialize PartyStorage");
+        }
+
         partyManager = new PartyManager();
         getCommandRegistry().registerCommand(new PartyCommand(this));
-        LOGGER.at(Level.INFO).log("PartyMod setup complete");
+        LOGGER.atInfo().log("PartyMod setup complete");
+    }
+
+    @Override
+    protected void shutdown() {
+        PartyStorage.close();
+        LOGGER.atInfo().log("PartyMod shutdown complete");
     }
 
     @Nonnull

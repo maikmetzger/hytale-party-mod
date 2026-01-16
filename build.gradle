@@ -2,6 +2,7 @@ import org.gradle.internal.os.OperatingSystem
 
 plugins {
     id 'java'
+    id 'com.gradleup.shadow' version '9.0.0-beta4'
 }
 
 version = '0.0.1'
@@ -42,6 +43,7 @@ if (OperatingSystem.current().isWindows()) {
 dependencies {
     compileOnly files(hytaleServerJar)
     compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
+    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
 }
 
 // Server läuft im Projekt unter /run
@@ -71,9 +73,10 @@ tasks.register('setupServer') {
 }
 
 tasks.register('copyPluginServer', Copy) {
-    dependsOn build, setupServer
-    from "build/libs/${project.name}-${version}.jar"
+    dependsOn shadowJar, setupServer
+    from "build/libs/${project.name}-${version}-all.jar"
     into serverModsDir
+    rename { "${project.name}-${version}.jar" }
 
     // Immer neu kopieren
     outputs.upToDateWhen { false }
@@ -85,9 +88,10 @@ tasks.register('copyPluginServer', Copy) {
 }
 
 tasks.register('copyPluginSingleplayer', Copy) {
-    dependsOn build
-    from "build/libs/${project.name}-${version}.jar"
+    dependsOn shadowJar
+    from "build/libs/${project.name}-${version}-all.jar"
     into singleplayerModsDir
+    rename { "${project.name}-${version}.jar" }
 }
 
 

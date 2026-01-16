@@ -39,17 +39,6 @@ if (OperatingSystem.current().isWindows()) {
     singleplayerModsDir = file("${home}/.hytale/UserData/Mods")
 }
 
-// Überschreibe mit gradle.properties falls vorhanden
-if (project.hasProperty('hytale_server_jar')) {
-    hytaleServerJar = project.property('hytale_server_jar')
-}
-if (project.hasProperty('hytale_assets_zip')) {
-    hytaleAssetsZip = project.property('hytale_assets_zip')
-}
-if (project.hasProperty('hytale_singleplayer_mods')) {
-    singleplayerModsDir = file(project.property('hytale_singleplayer_mods'))
-}
-
 dependencies {
     compileOnly files(hytaleServerJar)
     compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'

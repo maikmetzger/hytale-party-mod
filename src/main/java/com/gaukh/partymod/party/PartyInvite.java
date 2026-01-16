@@ -5,7 +5,19 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Represents a pending party invitation.
+ * Data model representing a pending party invitation.
+ * <p>
+ * This class holds invitation state:
+ * - Inviter UUID (who sent the invite)
+ * - Invitee UUID (who received the invite)
+ * - Party ID (which party they're invited to)
+ * - Expiration timestamp (invites expire after timeout)
+ * <p>
+ * Invitations are stored in PartyManager and cleaned up when accepted,
+ * declined, or expired.
+ *
+ * @see PartyManager for invitation logic (send, accept, decline)
+ * @see Party for the party data model
  */
 public class PartyInvite {
 
@@ -56,10 +68,13 @@ public class PartyInvite {
     }
 
     @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        PartyInvite that = (PartyInvite) o;
+    public boolean equals(Object object) {
+        if (this == object) return true;
+
+        if (object == null || getClass() != object.getClass()) return false;
+
+        PartyInvite that = (PartyInvite) object;
+
         return Objects.equals(inviterUuid, that.inviterUuid) &&
                Objects.equals(inviteeUuid, that.inviteeUuid) &&
                Objects.equals(partyId, that.partyId);

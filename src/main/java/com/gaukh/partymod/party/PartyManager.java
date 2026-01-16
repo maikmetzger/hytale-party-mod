@@ -9,6 +9,23 @@ import javax.annotation.Nullable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Service class that manages all party operations.
+ * <p>
+ * This is the central controller for the party system. It maintains:
+ * - All active parties (Map: partyId -> Party)
+ * - Player-to-party mapping (Map: playerUuid -> partyId)
+ * - Pending invitations (Map: inviteeUuid -> PartyInvite)
+ * <p>
+ * Provides all business logic:
+ * - createParty / disbandParty
+ * - sendInvite / acceptInvite / declineInvite
+ * - leaveParty / kickPlayer
+ * - broadcastToParty
+ *
+ * @see Party for party data model
+ * @see PartyInvite for invitation data model
+ */
 public class PartyManager {
 
     private final Map<String, Party> parties = new ConcurrentHashMap<>();

@@ -1,0 +1,7 @@
+{
+  "Group": "com.gaukh",
+  "Name": "PartyMod",
+  "Version": "1.0.0",
+  "Main": "com.gaukh.partymod.PartyMod",
+  "IncludesAssetPack": true
+}

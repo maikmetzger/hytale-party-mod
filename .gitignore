@@ -17,6 +17,3 @@ server.log
 # OS
 .DS_Store
 Thumbs.db
-
-# Local config (contains user-specific paths)
-gradle.properties

@@ -2,12 +2,12 @@ plugins {
     id 'java'
 }
 
-group = 'com.gaukh'
-version = '1.0.0'
+version = '0.0.1'
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
 }
 
 repositories {
@@ -21,11 +21,12 @@ dependencies {
 
 // Server läuft im Projekt unter /run
 def serverDir = file("${projectDir}/run")
-def modsDir = file("${serverDir}/mods")
+def serverModsDir = file("${serverDir}/mods")
+def singleplayerModsDir = file("C:\\Users\\gaukh\\AppData\\Roaming\\Hytale\\UserData\\Mods")
 
 tasks.register('setupServer') {
     doLast {
-        modsDir.mkdirs()
+        serverModsDir.mkdirs()
 
         def serverJar = file("${serverDir}/HytaleServer.jar")
         def assetsZip = file("${serverDir}/Assets.zip")
@@ -45,22 +46,37 @@ tasks.register('setupServer') {
     }
 }
 
-tasks.register('copyPlugin', Copy) {
+tasks.register('copyPluginServer', Copy) {
     dependsOn build, setupServer
     from "build/libs/${project.name}-${version}.jar"
-    into modsDir
+    into serverModsDir
+
+    // Immer neu kopieren
+    outputs.upToDateWhen { false }
+
+    // Alte JAR vorher löschen
+    doFirst {
+        delete fileTree(serverModsDir) { include "${project.name}*.jar" }
+    }
 }
+
+tasks.register('copyPluginSingleplayer', Copy) {
+    dependsOn build
+    from "build/libs/${project.name}-${version}.jar"
+    into singleplayerModsDir
+}
+
 
 // Extrahiert das Asset-Pack aus der JAR
 tasks.register('extractAssets') {
-    dependsOn copyPlugin
+    dependsOn copyPluginServer
     doLast {
-        def assetPackDir = file("${modsDir}/${project.name}")
+        def assetPackDir = file("${serverModsDir}/${project.name}")
         assetPackDir.mkdirs()
 
         // Extrahiere manifest.json, Server/ und Common/ (UI) aus der JAR
         copy {
-            from zipTree("${modsDir}/${project.name}-${version}.jar")
+            from zipTree("${serverModsDir}/${project.name}-${version}.jar")
             into assetPackDir
             include 'manifest.json'
             include 'Server/**'
@@ -81,7 +97,9 @@ tasks.register('extractAssets') {
 }
 
 tasks.register('runServer', Exec) {
-    dependsOn extractAssets
+    dependsOn clean, extractAssets
+    extractAssets.mustRunAfter clean
+
     workingDir serverDir
     commandLine 'java', '-jar', 'HytaleServer.jar', '--assets', 'Assets.zip', '--disable-sentry'
     standardInput = System.in

@@ -1,5 +1,8 @@
 package com.gaukh.partymod.party;
 
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
@@ -68,7 +71,7 @@ public class Party {
     }
 
     public boolean isMember(@Nonnull UUID uuid) {
-        return memberUuids.contains(uuid);
+        return !memberUuids.contains(uuid);
     }
 
     // Setters for JSON parsing
@@ -87,31 +90,34 @@ public class Party {
 
     // Modifiers
 
-    public boolean addMember(@Nonnull UUID uuid) {
+    public void addMember(@Nonnull UUID uuid) {
         boolean added = memberUuids.add(uuid);
+
         if (added) {
             updateUnmodifiable();
         }
-        return added;
+
     }
 
-    public boolean removeMember(@Nonnull UUID uuid) {
+    public void removeMember(@Nonnull UUID uuid) {
         if (isLeader(uuid)) {
-            return false;
+            return;
         }
+
         boolean removed = memberUuids.remove(uuid);
+
         if (removed) {
             updateUnmodifiable();
         }
-        return removed;
+
     }
 
-    public boolean transferLeadership(@Nonnull UUID newLeaderUuid) {
-        if (!isMember(newLeaderUuid)) {
-            return false;
+    public void transferLeadership(@Nonnull UUID newLeaderUuid) {
+        if (isMember(newLeaderUuid)) {
+            return;
         }
+
         this.leaderUuid = newLeaderUuid;
-        return true;
     }
 
     @Nonnull
@@ -138,11 +144,13 @@ public class Party {
     public String toJson() {
         StringBuilder members = new StringBuilder("[");
         boolean first = true;
+
         for (UUID uuid : memberUuids) {
             if (!first) members.append(",");
             members.append("\"").append(uuid.toString()).append("\"");
             first = false;
         }
+
         members.append("]");
 
         return String.format(
@@ -160,18 +168,21 @@ public class Party {
 
         party.id = extractJsonString(json, "Id");
         party.leaderUuid = UUID.fromString(extractJsonString(json, "LeaderUuid"));
-        party.createdAt = extractJsonLong(json, "CreatedAt");
+        party.createdAt = extractJsonLong(json);
 
         // Parse member UUIDs array
-        String membersArray = extractJsonArray(json, "MemberUuids");
-        if (!membersArray.isEmpty()) {
-            String[] parts = membersArray.replace("[", "").replace("]", "").replace("\"", "").split(",");
-            for (String part : parts) {
-                String trimmed = part.trim();
-                if (!trimmed.isEmpty()) {
-                    party.memberUuids.add(UUID.fromString(trimmed));
-                }
-            }
+        String membersArray = extractJsonArray(json);
+
+        if (membersArray.isEmpty()) return  party;
+
+        String[] parts = membersArray.replace("[", "").replace("]", "").replace("\"", "").split(",");
+
+        for (String part : parts) {
+            String trimmed = part.trim();
+
+            if (trimmed.isEmpty()) return party;
+
+            party.memberUuids.add(UUID.fromString(trimmed));
         }
 
         party.updateUnmodifiable();
@@ -180,23 +191,35 @@ public class Party {
 
     private static String extractJsonString(String json, String key) {
         String pattern = "\"" + key + "\":\"";
+
         int start = json.indexOf(pattern);
+
         if (start == -1) return "";
+
         start += pattern.length();
+
         int end = json.indexOf("\"", start);
+
         if (end == -1) return "";
+
         return json.substring(start, end);
     }
 
-    private static long extractJsonLong(String json, String key) {
-        String pattern = "\"" + key + "\":";
+    private static long extractJsonLong(String json) {
+        String pattern = "\"" + "CreatedAt" + "\":";
+
         int start = json.indexOf(pattern);
+
         if (start == -1) return 0L;
+
         start += pattern.length();
+
         int end = start;
+
         while (end < json.length() && Character.isDigit(json.charAt(end))) {
             end++;
         }
+
         try {
             return Long.parseLong(json.substring(start, end));
         } catch (NumberFormatException e) {
@@ -204,23 +227,34 @@ public class Party {
         }
     }
 
-    private static String extractJsonArray(String json, String key) {
-        String pattern = "\"" + key + "\":";
+    private static String extractJsonArray(String json) {
+        String pattern = "\"" + "MemberUuids" + "\":";
+
         int start = json.indexOf(pattern);
+
         if (start == -1) return "[]";
+
         start += pattern.length();
+
         int bracketStart = json.indexOf("[", start);
+
         if (bracketStart == -1) return "[]";
+
         int bracketEnd = json.indexOf("]", bracketStart);
+
         if (bracketEnd == -1) return "[]";
+
         return json.substring(bracketStart, bracketEnd + 1);
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
+
         if (o == null || getClass() != o.getClass()) return false;
+
         Party party = (Party) o;
+
         return Objects.equals(id, party.id);
     }
 

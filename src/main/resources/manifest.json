@@ -1,7 +1,22 @@
 {
-  "Group": "com.gaukh",
+  "Group": "Gaukh",
   "Name": "PartyMod",
-  "Version": "1.0.0",
+  "Version": "0.0.1",
+  "Description": "Party mod",
+  "Authors": [
+    {
+      "Name": "Gaukh"
+    }
+  ],
+  "Website": "gaukh.com",
+  "ServerVersion": "*",
+  "Dependencies": {
+
+  },
+  "OptionalDependencies": {
+
+  },
+  "DisabledByDefault": false,
   "Main": "com.gaukh.partymod.PartyMod",
   "IncludesAssetPack": true
 }

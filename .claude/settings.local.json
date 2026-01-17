@@ -3,7 +3,8 @@
     "allow": [
       "WebFetch(domain:hytale-docs.pages.dev)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "WebSearch"
     ]
   }
 }

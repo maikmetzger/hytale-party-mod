@@ -4,7 +4,7 @@ import com.gaukh.partymod.PartyMod;
 import com.gaukh.partymod.party.Party;
 import com.gaukh.partymod.party.PartyInvite;
 import com.gaukh.partymod.party.PartyManager;
-import com.gaukh.partymod.ui.PartyMenuUI;
+import com.gaukh.partymod.pages.PartyMenuPage;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.Message;
@@ -308,7 +308,7 @@ public class PartyCommand extends AbstractPlayerCommand {
                              @Nonnull PlayerRef playerRef) {
         Player playerComponent = store.getComponent(ref, Player.getComponentType());
         if (playerComponent != null) {
-            PartyMenuUI menuUI = new PartyMenuUI(playerRef, plugin);
+            PartyMenuPage menuUI = new PartyMenuPage(playerRef, plugin);
             playerComponent.getPageManager().openCustomPage(ref, store, menuUI);
         }
     }

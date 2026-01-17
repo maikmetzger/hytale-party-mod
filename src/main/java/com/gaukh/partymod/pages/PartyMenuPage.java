@@ -1,7 +1,8 @@
-package com.gaukh.partymod.ui;
+package com.gaukh.partymod.pages;
 
 import com.gaukh.partymod.PartyMod;
 import com.gaukh.partymod.party.*;
+import com.gaukh.partymod.ui.PartyMenuEventData;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
@@ -22,7 +23,7 @@ import javax.annotation.Nullable;
 import java.util.List;
 import java.util.UUID;
 
-public class PartyMenuUI extends InteractiveCustomUIPage<PartyMenuEventData> {
+public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
     private enum ViewState {
         NO_PARTY,
@@ -59,7 +60,7 @@ public class PartyMenuUI extends InteractiveCustomUIPage<PartyMenuEventData> {
     private String pendingJoinPartyId = null;
     private String pendingConfirmAction = null;
 
-    public PartyMenuUI(@Nonnull PlayerRef playerRef, @Nonnull PartyMod plugin) {
+    public PartyMenuPage(@Nonnull PlayerRef playerRef, @Nonnull PartyMod plugin) {
         super(playerRef, CustomPageLifetime.CanDismiss, PartyMenuEventData.CODEC);
         this.partyManager = plugin.getPartyManager();
     }

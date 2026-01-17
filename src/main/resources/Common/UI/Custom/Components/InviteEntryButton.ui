@@ -1,0 +1,49 @@
+$C = "../Common.ui";
+
+@InputBoxStyle = ButtonStyle(
+    Default: (Background: $C.@InputBoxBackground),
+    Hovered: (Background: $C.@InputBoxHoveredBackground),
+    Pressed: (Background: $C.@InputBoxSelectedBackground)
+);
+
+// Invite entry for the invites list
+Button #Button {
+    Style: @InputBoxStyle;
+    Anchor: (Height: 52, Bottom: 6);
+    Padding: (Horizontal: 12, Vertical: 8);
+    LayoutMode: Left;
+
+    // Party info container
+    Group {
+        LayoutMode: Top;
+        FlexWeight: 1;
+
+        // Party name
+        Label #PartyName {
+            Text: "Party Name";
+            Style: (FontSize: 15, TextColor: #b7b8b9, VerticalAlignment: Center);
+        }
+
+        // Inviter name
+        Label #InviterName {
+            Text: "Invited by: Player";
+            Style: (FontSize: 12, TextColor: #778292(0.8));
+        }
+    }
+
+    // Quick action buttons
+    Group {
+        LayoutMode: Left;
+        Anchor: (Width: 100);
+
+        $C.@SmallSecondaryTextButton #QuickAccept {
+            @Text = "Join";
+            Anchor: (Width: 50, Right: 4);
+        }
+
+        $C.@TertiaryTextButton #QuickDecline {
+            @Text = "X";
+            Anchor: (Width: 40);
+        }
+    }
+}

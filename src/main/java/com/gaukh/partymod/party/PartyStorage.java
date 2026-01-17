@@ -58,7 +58,11 @@ public class PartyStorage {
                 CREATE TABLE IF NOT EXISTS parties (
                     id TEXT PRIMARY KEY,
                     leader_uuid TEXT NOT NULL,
-                    created_at INTEGER NOT NULL
+                    created_at INTEGER NOT NULL,
+                    name TEXT NOT NULL DEFAULT 'Party',
+                    password TEXT,
+                    access_type INTEGER NOT NULL DEFAULT 3,
+                    max_members INTEGER NOT NULL DEFAULT 8
                 )
             """);
 
@@ -71,11 +75,38 @@ public class PartyStorage {
                     FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE
                 )
             """);
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS party_join_requests (
+                    party_id TEXT NOT NULL,
+                    requester_uuid TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    PRIMARY KEY (party_id, requester_uuid),
+                    FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE
+                )
+            """);
         }
 
-        // Migration: Add role column if it doesn't exist (for existing databases)
+        runMigrations();
+    }
+
+    private static void runMigrations() {
+        // Migration: Add role column if it doesn't exist
+        tryAddColumn("party_members", "role", "INTEGER NOT NULL DEFAULT 0");
+        // Migration: Add name column
+        tryAddColumn("parties", "name", "TEXT NOT NULL DEFAULT 'Party'");
+        // Migration: Add password column
+        tryAddColumn("parties", "password", "TEXT");
+        // Migration: Add access_type column
+        tryAddColumn("parties", "access_type", "INTEGER NOT NULL DEFAULT 3");
+        // Migration: Add max_members column
+        tryAddColumn("parties", "max_members", "INTEGER NOT NULL DEFAULT 8");
+    }
+
+    private static void tryAddColumn(String table, String column, String definition) {
         try (Statement stmt = connection.createStatement()) {
-            stmt.execute("ALTER TABLE party_members ADD COLUMN role INTEGER NOT NULL DEFAULT 0");
+            stmt.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
         } catch (SQLException e) {
             // Column already exists - ignore
         }
@@ -89,13 +120,22 @@ public class PartyStorage {
 
         // Upsert party
         try (PreparedStatement stmt = connection.prepareStatement("""
-            INSERT INTO parties (id, leader_uuid, created_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET leader_uuid = excluded.leader_uuid
+            INSERT INTO parties (id, leader_uuid, created_at, name, password, access_type, max_members)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                leader_uuid = excluded.leader_uuid,
+                name = excluded.name,
+                password = excluded.password,
+                access_type = excluded.access_type,
+                max_members = excluded.max_members
         """)) {
             stmt.setString(1, party.getId());
             stmt.setString(2, party.getLeaderUuid().toString());
             stmt.setLong(3, party.getCreatedAt());
+            stmt.setString(4, party.getName());
+            stmt.setString(5, party.getPassword());
+            stmt.setInt(6, party.getAccessType().getLevel());
+            stmt.setInt(7, party.getMaxMembers());
             stmt.executeUpdate();
         }
 
@@ -131,12 +171,17 @@ public class PartyStorage {
 
         // Load party base data
         try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT id, leader_uuid, created_at FROM parties")) {
+             ResultSet rs = stmt.executeQuery(
+                     "SELECT id, leader_uuid, created_at, name, password, access_type, max_members FROM parties")) {
             while (rs.next()) {
                 Party party = new Party();
                 party.setId(rs.getString("id"));
                 party.setLeaderUuid(UUID.fromString(rs.getString("leader_uuid")));
                 party.setCreatedAt(rs.getLong("created_at"));
+                party.setName(rs.getString("name"));
+                party.setPassword(rs.getString("password"));
+                party.setAccessType(PartyAccessType.fromLevel(rs.getInt("access_type")));
+                party.setMaxMembers(rs.getInt("max_members"));
                 parties.put(party.getId(), party);
             }
         }
@@ -226,6 +271,94 @@ public class PartyStorage {
                 "UPDATE parties SET leader_uuid = ? WHERE id = ?")) {
             stmt.setString(1, newLeaderUuid.toString());
             stmt.setString(2, partyId);
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Update party settings (name, password, access type, max members).
+     */
+    public static void updatePartySettings(@Nonnull Party party) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement("""
+            UPDATE parties SET name = ?, password = ?, access_type = ?, max_members = ?
+            WHERE id = ?
+        """)) {
+            stmt.setString(1, party.getName());
+            stmt.setString(2, party.getPassword());
+            stmt.setInt(3, party.getAccessType().getLevel());
+            stmt.setInt(4, party.getMaxMembers());
+            stmt.setString(5, party.getId());
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Save a join request.
+     */
+    public static void saveJoinRequest(@Nonnull PartyJoinRequest request) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement("""
+            INSERT OR REPLACE INTO party_join_requests (party_id, requester_uuid, created_at, expires_at)
+            VALUES (?, ?, ?, ?)
+        """)) {
+            stmt.setString(1, request.getPartyId());
+            stmt.setString(2, request.getRequesterUuid().toString());
+            stmt.setLong(3, request.getCreatedAt());
+            stmt.setLong(4, request.getExpiresAt());
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Delete a join request.
+     */
+    public static void deleteJoinRequest(@Nonnull String partyId, @Nonnull UUID requesterUuid) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "DELETE FROM party_join_requests WHERE party_id = ? AND requester_uuid = ?")) {
+            stmt.setString(1, partyId);
+            stmt.setString(2, requesterUuid.toString());
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Load all non-expired join requests for a party.
+     */
+    @Nonnull
+    public static List<PartyJoinRequest> loadJoinRequests(@Nonnull String partyId) throws SQLException {
+        List<PartyJoinRequest> requests = new ArrayList<>();
+        if (connection == null) return requests;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT requester_uuid, created_at, expires_at FROM party_join_requests WHERE party_id = ? AND expires_at > ?")) {
+            stmt.setString(1, partyId);
+            stmt.setLong(2, System.currentTimeMillis());
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    UUID uuid = UUID.fromString(rs.getString("requester_uuid"));
+                    long createdAt = rs.getLong("created_at");
+                    long expiresAt = rs.getLong("expires_at");
+                    requests.add(new PartyJoinRequest(uuid, partyId, createdAt, expiresAt));
+                }
+            }
+        }
+        return requests;
+    }
+
+    /**
+     * Delete all expired join requests.
+     */
+    public static void cleanupExpiredRequests() throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "DELETE FROM party_join_requests WHERE expires_at < ?")) {
+            stmt.setLong(1, System.currentTimeMillis());
             stmt.executeUpdate();
         }
     }

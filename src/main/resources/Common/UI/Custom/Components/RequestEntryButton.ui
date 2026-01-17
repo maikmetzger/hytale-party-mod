@@ -1,0 +1,32 @@
+$C = "../Common.ui";
+
+// Join request entry for the requests list (leader view)
+Group #Entry {
+    Anchor: (Height: 52, Bottom: 6);
+    Padding: (Horizontal: 12, Vertical: 8);
+    Background: $C.@InputBoxBackground;
+    LayoutMode: Left;
+
+    // Player name
+    Label #RequesterName {
+        Text: "Player Name";
+        Style: (FontSize: 15, TextColor: #b7b8b9, VerticalAlignment: Center);
+        FlexWeight: 1;
+    }
+
+    // Action buttons
+    Group {
+        LayoutMode: Left;
+        Anchor: (Width: 120);
+
+        $C.@SmallSecondaryTextButton #AcceptRequest {
+            @Text = "Accept";
+            Anchor: (Width: 60, Right: 4);
+        }
+
+        $C.@TertiaryTextButton #DeclineRequest {
+            @Text = "Deny";
+            Anchor: (Width: 52);
+        }
+    }
+}

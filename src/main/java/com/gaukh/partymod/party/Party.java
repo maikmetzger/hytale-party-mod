@@ -25,11 +25,22 @@ import java.util.Map;
  */
 public class Party {
 
+    private static final int DEFAULT_MAX_MEMBERS = 8;
+    private static final int MIN_MEMBERS = 1;
+    private static final int MAX_MEMBERS_LIMIT = 20;
+    private static final int MAX_NAME_LENGTH = 32;
+
     private String id;
     private UUID leaderUuid;
     private final Set<UUID> memberUuids = ConcurrentHashMap.newKeySet();
     private final Map<UUID, PartyRole> memberRoles = new ConcurrentHashMap<>();
     private long createdAt;
+
+    // Party settings
+    private String name;
+    private String password;
+    private PartyAccessType accessType = PartyAccessType.LOCKED;
+    private int maxMembers = DEFAULT_MAX_MEMBERS;
 
     // Transient - not persisted
     private transient Set<UUID> unmodifiableMembers;
@@ -41,10 +52,23 @@ public class Party {
     }
 
     public Party(@Nonnull UUID leaderUuid) {
+        this(leaderUuid, "Party");
+    }
+
+    public Party(@Nonnull UUID leaderUuid, @Nonnull String name) {
         this();
         this.leaderUuid = leaderUuid;
+        this.name = sanitizeName(name);
         this.memberUuids.add(leaderUuid);
         updateUnmodifiable();
+    }
+
+    private String sanitizeName(String name) {
+        if (name == null || name.isBlank()) {
+            return "Party";
+        }
+        String trimmed = name.trim();
+        return trimmed.substring(0, Math.min(trimmed.length(), MAX_NAME_LENGTH));
     }
 
     private void updateUnmodifiable() {
@@ -77,6 +101,40 @@ public class Party {
 
     public long getCreatedAt() {
         return createdAt;
+    }
+
+    @Nonnull
+    public String getName() {
+        return name != null ? name : "Party";
+    }
+
+    @Nullable
+    public String getPassword() {
+        return password;
+    }
+
+    @Nonnull
+    public PartyAccessType getAccessType() {
+        return accessType;
+    }
+
+    public int getMaxMembers() {
+        return maxMembers;
+    }
+
+    public boolean isFull() {
+        return memberUuids.size() >= maxMembers;
+    }
+
+    public boolean isJoinable() {
+        return !isFull() && accessType != PartyAccessType.LOCKED;
+    }
+
+    public boolean checkPassword(@Nullable String input) {
+        if (password == null || password.isEmpty()) {
+            return true;
+        }
+        return password.equals(input);
     }
 
     public boolean isLeader(@Nonnull UUID uuid) {
@@ -120,6 +178,22 @@ public class Party {
 
     public void setCreatedAt(long createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public void setName(@Nonnull String name) {
+        this.name = sanitizeName(name);
+    }
+
+    public void setPassword(@Nullable String password) {
+        this.password = (password == null || password.isEmpty()) ? null : password;
+    }
+
+    public void setAccessType(@Nonnull PartyAccessType accessType) {
+        this.accessType = accessType;
+    }
+
+    public void setMaxMembers(int maxMembers) {
+        this.maxMembers = Math.max(MIN_MEMBERS, Math.min(MAX_MEMBERS_LIMIT, maxMembers));
     }
 
     // Modifiers

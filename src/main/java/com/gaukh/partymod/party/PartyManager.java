@@ -35,6 +35,7 @@ public class PartyManager {
     private final Map<String, Party> parties = new ConcurrentHashMap<>();
     private final Map<UUID, String> playerPartyMap = new ConcurrentHashMap<>();
     private final Map<UUID, PartyInvite> pendingInvites = new ConcurrentHashMap<>();
+    private final Map<String, List<PartyJoinRequest>> joinRequests = new ConcurrentHashMap<>();
 
     public PartyManager() {
         try {
@@ -52,11 +53,18 @@ public class PartyManager {
 
     @Nullable
     public Party createParty(@Nonnull UUID leaderUuid) {
+        PlayerRef ref = Universe.get().getPlayer(leaderUuid);
+        String name = ref != null ? ref.getUsername() + "'s Party" : "Party";
+        return createParty(leaderUuid, name);
+    }
+
+    @Nullable
+    public Party createParty(@Nonnull UUID leaderUuid, @Nonnull String name) {
         if (isInParty(leaderUuid)) {
             return null;
         }
 
-        Party party = new Party(leaderUuid);
+        Party party = new Party(leaderUuid, name);
         parties.put(party.getId(), party);
         playerPartyMap.put(leaderUuid, party.getId());
 
@@ -315,5 +323,234 @@ public class PartyManager {
                 playerRef.sendMessage(message);
             }
         }
+    }
+
+    // ==================== New methods for public parties and join requests ====================
+
+    /**
+     * Get all publicly visible parties (not LOCKED and not full).
+     */
+    @Nonnull
+    public List<Party> getPublicParties() {
+        return parties.values().stream()
+                .filter(p -> p.getAccessType().isPubliclyVisible())
+                .filter(p -> !p.isFull())
+                .toList();
+    }
+
+    /**
+     * Get a party by its ID.
+     */
+    @Nullable
+    public Party getPartyById(@Nonnull String partyId) {
+        return parties.get(partyId);
+    }
+
+    /**
+     * Join an OPEN party directly.
+     */
+    public boolean joinOpenParty(@Nonnull UUID playerUuid, @Nonnull String partyId) {
+        if (isInParty(playerUuid)) return false;
+
+        Party party = parties.get(partyId);
+        if (party == null) return false;
+        if (party.getAccessType() != PartyAccessType.OPEN) return false;
+        if (party.isFull()) return false;
+
+        party.addMember(playerUuid);
+        playerPartyMap.put(playerUuid, party.getId());
+
+        try {
+            PartyStorage.addMember(party.getId(), playerUuid);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
+        }
+
+        PlayerRef playerRef = Universe.get().getPlayer(playerUuid);
+        String playerName = playerRef != null ? playerRef.getUsername() : playerUuid.toString();
+        broadcastToParty(party, Message.raw(playerName + " joined the party."));
+        return true;
+    }
+
+    /**
+     * Join a PASSWORDED party with a password.
+     */
+    public boolean joinWithPassword(@Nonnull UUID playerUuid, @Nonnull String partyId, @Nonnull String password) {
+        if (isInParty(playerUuid)) return false;
+
+        Party party = parties.get(partyId);
+        if (party == null) return false;
+        if (party.getAccessType() != PartyAccessType.PASSWORDED) return false;
+        if (party.isFull()) return false;
+        if (!party.checkPassword(password)) return false;
+
+        party.addMember(playerUuid);
+        playerPartyMap.put(playerUuid, party.getId());
+
+        try {
+            PartyStorage.addMember(party.getId(), playerUuid);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
+        }
+
+        PlayerRef playerRef = Universe.get().getPlayer(playerUuid);
+        String playerName = playerRef != null ? playerRef.getUsername() : playerUuid.toString();
+        broadcastToParty(party, Message.raw(playerName + " joined the party."));
+        return true;
+    }
+
+    /**
+     * Send a join request to a REQUEST_ONLY party.
+     */
+    public boolean sendJoinRequest(@Nonnull UUID playerUuid, @Nonnull String partyId) {
+        if (isInParty(playerUuid)) return false;
+
+        Party party = parties.get(partyId);
+        if (party == null) return false;
+        if (party.getAccessType() != PartyAccessType.REQUEST_ONLY) return false;
+        if (party.isFull()) return false;
+
+        // Check if already has a pending request
+        List<PartyJoinRequest> requests = joinRequests.computeIfAbsent(partyId, k -> new ArrayList<>());
+        boolean alreadyRequested = requests.stream()
+                .anyMatch(r -> r.getRequesterUuid().equals(playerUuid) && !r.isExpired());
+        if (alreadyRequested) return false;
+
+        PartyJoinRequest request = new PartyJoinRequest(playerUuid, partyId);
+        requests.add(request);
+
+        try {
+            PartyStorage.saveJoinRequest(request);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to save join request");
+        }
+
+        // Notify leader
+        PlayerRef leaderRef = Universe.get().getPlayer(party.getLeaderUuid());
+        PlayerRef requesterRef = Universe.get().getPlayer(playerUuid);
+        if (leaderRef != null && requesterRef != null) {
+            leaderRef.sendMessage(Message.raw(requesterRef.getUsername() + " wants to join your party."));
+        }
+
+        return true;
+    }
+
+    /**
+     * Accept a join request (leader only).
+     */
+    public boolean acceptJoinRequest(@Nonnull UUID leaderUuid, @Nonnull UUID requesterUuid) {
+        Party party = getPartyByPlayer(leaderUuid);
+        if (party == null || !party.isLeader(leaderUuid)) return false;
+        if (party.isFull()) return false;
+        if (isInParty(requesterUuid)) return false;
+
+        List<PartyJoinRequest> requests = joinRequests.get(party.getId());
+        if (requests == null) return false;
+
+        PartyJoinRequest request = requests.stream()
+                .filter(r -> r.getRequesterUuid().equals(requesterUuid) && !r.isExpired())
+                .findFirst()
+                .orElse(null);
+
+        if (request == null) return false;
+
+        // Remove request
+        requests.remove(request);
+        try {
+            PartyStorage.deleteJoinRequest(party.getId(), requesterUuid);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to delete join request");
+        }
+
+        // Add member
+        party.addMember(requesterUuid);
+        playerPartyMap.put(requesterUuid, party.getId());
+
+        try {
+            PartyStorage.addMember(party.getId(), requesterUuid);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
+        }
+
+        PlayerRef requesterRef = Universe.get().getPlayer(requesterUuid);
+        String name = requesterRef != null ? requesterRef.getUsername() : requesterUuid.toString();
+        broadcastToParty(party, Message.raw(name + " joined the party."));
+
+        if (requesterRef != null) {
+            requesterRef.sendMessage(Message.raw("Your join request was accepted!"));
+        }
+
+        return true;
+    }
+
+    /**
+     * Decline a join request (leader only).
+     */
+    public boolean declineJoinRequest(@Nonnull UUID leaderUuid, @Nonnull UUID requesterUuid) {
+        Party party = getPartyByPlayer(leaderUuid);
+        if (party == null || !party.isLeader(leaderUuid)) return false;
+
+        List<PartyJoinRequest> requests = joinRequests.get(party.getId());
+        if (requests == null) return false;
+
+        boolean removed = requests.removeIf(r -> r.getRequesterUuid().equals(requesterUuid));
+        if (removed) {
+            try {
+                PartyStorage.deleteJoinRequest(party.getId(), requesterUuid);
+            } catch (SQLException e) {
+                LOGGER.atWarning().withCause(e).log("Failed to delete join request");
+            }
+
+            PlayerRef requesterRef = Universe.get().getPlayer(requesterUuid);
+            if (requesterRef != null) {
+                requesterRef.sendMessage(Message.raw("Your join request was declined."));
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Update party settings (leader only).
+     */
+    public boolean updatePartySettings(@Nonnull UUID leaderUuid, @Nullable String name,
+                                       @Nullable String password, @Nullable PartyAccessType accessType,
+                                       @Nullable Integer maxMembers) {
+        Party party = getPartyByPlayer(leaderUuid);
+        if (party == null || !party.isLeader(leaderUuid)) return false;
+
+        if (name != null && !name.isBlank()) party.setName(name);
+        if (password != null) party.setPassword(password.isEmpty() ? null : password);
+        if (accessType != null) party.setAccessType(accessType);
+        if (maxMembers != null) party.setMaxMembers(maxMembers);
+
+        try {
+            PartyStorage.updatePartySettings(party);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to update party settings");
+        }
+
+        return true;
+    }
+
+    /**
+     * Get all non-expired join requests for a party.
+     */
+    @Nonnull
+    public List<PartyJoinRequest> getJoinRequests(@Nonnull String partyId) {
+        List<PartyJoinRequest> requests = joinRequests.get(partyId);
+        if (requests == null) return List.of();
+        // Remove expired
+        requests.removeIf(PartyJoinRequest::isExpired);
+        return new ArrayList<>(requests);
+    }
+
+    /**
+     * Check if a player has a pending join request for a specific party.
+     */
+    public boolean hasPendingJoinRequest(@Nonnull UUID playerUuid, @Nonnull String partyId) {
+        List<PartyJoinRequest> requests = joinRequests.get(partyId);
+        if (requests == null) return false;
+        return requests.stream()
+                .anyMatch(r -> r.getRequesterUuid().equals(playerUuid) && !r.isExpired());
     }
 }

@@ -20,10 +20,20 @@ public class PartyMenuEventData {
             new KeyedCodec<>("Target", Codec.STRING),
             (data, value) -> data.target = value,
             data -> data.target
+    ).add().append(
+            new KeyedCodec<>("@PartyName", Codec.STRING),
+            (data, value) -> data.partyName = value,
+            data -> data.partyName
+    ).add().append(
+            new KeyedCodec<>("@Password", Codec.STRING),
+            (data, value) -> data.password = value,
+            data -> data.password
     ).add().build();
 
     private String action;
     private String target;
+    private String partyName;
+    private String password;
 
     @Nonnull
     public String getAction() {
@@ -33,5 +43,15 @@ public class PartyMenuEventData {
     @Nullable
     public String getTarget() {
         return target;
+    }
+
+    @Nullable
+    public String getPartyName() {
+        return partyName;
+    }
+
+    @Nullable
+    public String getPassword() {
+        return password;
     }
 }

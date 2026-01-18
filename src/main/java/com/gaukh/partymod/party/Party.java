@@ -42,6 +42,9 @@ public class Party {
     // Transient - not persisted
     private transient Set<UUID> unmodifiableMembers;
 
+    // Fake members for testing (not persisted)
+    private transient Map<UUID, FakeMember> fakeMembers = new ConcurrentHashMap<>();
+
     public Party() {
         // Default constructor
         this.id = UUID.randomUUID().toString();
@@ -293,5 +296,43 @@ public class Party {
                 ", leader=" + leaderUuid +
                 ", members=" + memberUuids.size() +
                 '}';
+    }
+
+    // ==================== FAKE MEMBERS (for testing) ====================
+
+    public void addFakeMember(@Nonnull FakeMember fakeMember) {
+        if (fakeMembers == null) {
+            fakeMembers = new ConcurrentHashMap<>();
+        }
+        fakeMembers.put(fakeMember.getUuid(), fakeMember);
+    }
+
+    public void removeFakeMember(@Nonnull UUID uuid) {
+        if (fakeMembers != null) {
+            fakeMembers.remove(uuid);
+        }
+    }
+
+    public void clearFakeMembers() {
+        if (fakeMembers != null) {
+            fakeMembers.clear();
+        }
+    }
+
+    @Nonnull
+    public Map<UUID, FakeMember> getFakeMembers() {
+        if (fakeMembers == null) {
+            fakeMembers = new ConcurrentHashMap<>();
+        }
+        return fakeMembers;
+    }
+
+    @Nullable
+    public FakeMember getFakeMember(@Nonnull UUID uuid) {
+        return fakeMembers != null ? fakeMembers.get(uuid) : null;
+    }
+
+    public boolean hasFakeMembers() {
+        return fakeMembers != null && !fakeMembers.isEmpty();
     }
 }

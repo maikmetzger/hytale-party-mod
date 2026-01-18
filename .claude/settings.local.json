@@ -17,7 +17,9 @@
       "Bash(xargs -I {} bash -c 'strings \"\"{}\"\" | grep -i \"\"UpdateWorldMap\"\" && echo \"\"Found in {}\"\"')",
       "Bash(unzip:*)",
       "Bash(javap:*)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "WebFetch(domain:hytalemodding.dev)"
     ]
-  }
+  },
+  "outputStyle": "Explanatory"
 }

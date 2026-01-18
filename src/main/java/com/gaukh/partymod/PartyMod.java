@@ -7,7 +7,6 @@ import com.gaukh.partymod.party.PartyStorage;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.asset.common.CommonAssetModule;
 import com.hypixel.hytale.server.core.asset.common.asset.FileCommonAsset;
-import com.hypixel.hytale.server.core.HytaleServer;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 
@@ -17,16 +16,13 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 public class PartyMod extends JavaPlugin {
 
     private static PartyMod instance;
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
-    public static final String PARTY_MARKER_ICON = "UI/WorldMap/MapMarkers/PartyMember";
+    public static final String PARTY_MARKER_ICON = "PartyMember.png";
 
     private PartyManager partyManager;
 
@@ -58,17 +54,9 @@ public class PartyMod extends JavaPlugin {
     }
 
     private void registerTicker() {
-        ScheduledExecutorService initScheduler = Executors.newSingleThreadScheduledExecutor();
-        initScheduler.schedule(() -> {
-            try {
-                // Register with HytaleServer's TickingThread (main thread)
-                HytaleServer.get().getTickingThread().add(PartyMarkerTicker.getInstance());
-                LOGGER.atInfo().log("Registered PartyMarkerTicker with TickingThread");
-            } catch (Exception e) {
-                LOGGER.atWarning().withCause(e).log("Failed to register PartyMarkerTicker");
-            }
-            initScheduler.shutdown();
-        }, 3, TimeUnit.SECONDS);
+        // Register TickingSystem with EntityStoreRegistry
+        getEntityStoreRegistry().registerSystem(PartyMarkerTicker.getInstance());
+        LOGGER.atInfo().log("Registered PartyMarkerTicker as TickingSystem");
     }
 
     private void registerPartyMemberIcon() {

@@ -1,8 +1,10 @@
 package com.gaukh.partymod.markers;
 
 import com.gaukh.partymod.PartyMod;
+import com.gaukh.partymod.party.FakeMember;
 import com.gaukh.partymod.party.Party;
-import com.hypixel.hytale.common.thread.ticking.Tickable;
+import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.component.system.tick.TickingSystem;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.protocol.packets.worldmap.MapMarker;
 import com.hypixel.hytale.protocol.packets.worldmap.UpdateWorldMap;
@@ -12,34 +14,96 @@ import com.hypixel.hytale.server.core.modules.entity.component.TransformComponen
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.PositionUtil;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Manages party member markers using Tickable interface.
+ * Manages party member markers using TickingSystem.
  * Runs on MAIN THREAD - safe to call getComponent() without console spam.
  */
-public class PartyMarkerTicker implements Tickable {
+public class PartyMarkerTicker extends TickingSystem<EntityStore> {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
     private static final PartyMarkerTicker INSTANCE = new PartyMarkerTicker();
 
     private float accumulator = 0f;
-    private static final float UPDATE_INTERVAL = 0.5f; // 500ms between updates
+    private static final float UPDATE_INTERVAL = 0.1f; // 100ms between updates (efficient due to delta logic)
 
-    // Track which markers each player currently has displayed
-    private final Map<UUID, Set<String>> displayedMarkers = new ConcurrentHashMap<>();
+    // Delta thresholds for position and rotation changes
+    private static final double POSITION_THRESHOLD = 5.0; // 5 blocks minimum movement
+    private static final double POSITION_THRESHOLD_SQ = POSITION_THRESHOLD * POSITION_THRESHOLD;
+    private static final float YAW_THRESHOLD = 0.05f; // ~2.86 degrees
+
+    // Track marker state for each viewer to enable delta updates
+    private final Map<UUID, Map<String, MarkerState>> displayedMarkers = new ConcurrentHashMap<>();
+
+    /**
+     * Tracks the last known state of a marker to enable delta updates.
+     * Only sends updates when position, name, or yaw changes significantly.
+     */
+    private static class MarkerState {
+        final String id;
+        String name;
+        double x, y, z;
+        float yaw;
+
+        MarkerState(String id, String name, double x, double y, double z, float yaw) {
+            this.id = id;
+            this.name = name;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.yaw = yaw;
+        }
+
+        /**
+         * Check if the marker needs an update based on position, name, or yaw changes.
+         */
+        boolean needsUpdate(String newName, double newX, double newY, double newZ, float newYaw) {
+            // Check name change (distance in name changes frequently)
+            if (!this.name.equals(newName)) {
+                return true;
+            }
+
+            // Check position change (squared distance for efficiency)
+            double dx = newX - this.x;
+            double dy = newY - this.y;
+            double dz = newZ - this.z;
+            if (dx * dx + dy * dy + dz * dz >= POSITION_THRESHOLD_SQ) {
+                return true;
+            }
+
+            // Check yaw change
+            if (Math.abs(newYaw - this.yaw) >= YAW_THRESHOLD) {
+                return true;
+            }
+
+            return false;
+        }
+
+        /**
+         * Update the cached state with new values.
+         */
+        void update(String newName, double newX, double newY, double newZ, float newYaw) {
+            this.name = newName;
+            this.x = newX;
+            this.y = newY;
+            this.z = newZ;
+            this.yaw = newYaw;
+        }
+    }
 
     public static PartyMarkerTicker getInstance() {
         return INSTANCE;
     }
 
     @Override
-    public void tick(float deltaTime) {
-        accumulator += deltaTime;
+    public void tick(float dt, int index, Store<EntityStore> store) {
+        accumulator += dt;
         if (accumulator >= UPDATE_INTERVAL) {
             accumulator = 0f;
             updateAllPartyMarkers();
@@ -51,8 +115,16 @@ public class PartyMarkerTicker implements Tickable {
      * Runs on MAIN THREAD - safe to call getComponent().
      */
     private void updateAllPartyMarkers() {
-        for (PlayerRef viewerRef : Universe.get().getPlayers()) {
-            updateMarkersForPlayer(viewerRef);
+        try {
+            for (PlayerRef viewerRef : Universe.get().getPlayers()) {
+                try {
+                    updateMarkersForPlayer(viewerRef);
+                } catch (Exception e) {
+                    // Ignore errors for individual players (they may not be fully initialized)
+                }
+            }
+        } catch (Exception e) {
+            // Ignore errors during iteration
         }
     }
 
@@ -66,9 +138,14 @@ public class PartyMarkerTicker implements Tickable {
             return;
         }
 
-        // Get viewer's player component
+        // Get viewer's player component - may be null if player is still loading
         Player viewer = viewerRef.getComponent(Player.getComponentType());
         if (viewer == null) {
+            return;
+        }
+
+        // Check if player has a world (fully loaded)
+        if (viewer.getWorld() == null) {
             return;
         }
 
@@ -80,6 +157,11 @@ public class PartyMarkerTicker implements Tickable {
         double viewerZ = viewerTransform.getTransform().getPosition().getZ();
 
         World viewerWorld = viewer.getWorld();
+
+        // Get or create the marker state map for this viewer
+        Map<String, MarkerState> viewerMarkerStates = displayedMarkers.computeIfAbsent(
+                viewerUuid, k -> new ConcurrentHashMap<>()
+        );
 
         Set<String> currentMarkerIds = new HashSet<>();
         List<MapMarker> markersToSend = new ArrayList<>();
@@ -100,10 +182,13 @@ public class PartyMarkerTicker implements Tickable {
             TransformComponent transform = memberPlayer.getTransformComponent();
             if (transform == null) continue;
 
-            // Calculate distance
+            // Get member position and yaw
             double memberX = transform.getTransform().getPosition().getX();
             double memberY = transform.getTransform().getPosition().getY();
             double memberZ = transform.getTransform().getPosition().getZ();
+            float memberYaw = transform.getTransform().getRotation().getYaw();
+
+            // Calculate distance to viewer
             double dx = memberX - viewerX;
             double dy = memberY - viewerY;
             double dz = memberZ - viewerZ;
@@ -114,44 +199,115 @@ public class PartyMarkerTicker implements Tickable {
 
             String markerName = memberRef.getUsername() + " (" + distance + "m)";
 
-            MapMarker marker = new MapMarker(
-                    markerId,
-                    markerName,
-                    PartyMod.PARTY_MARKER_ICON,
-                    PositionUtil.toTransformPacket(transform.getTransform()),
-                    null
-            );
-            markersToSend.add(marker);
-        }
+            // Check if this marker needs an update (delta logic)
+            MarkerState existingState = viewerMarkerStates.get(markerId);
+            boolean needsUpdate = (existingState == null) ||
+                    existingState.needsUpdate(markerName, memberX, memberY, memberZ, memberYaw);
 
-        // Determine which markers need to be removed
-        Set<String> previousMarkers = displayedMarkers.getOrDefault(viewerUuid, Collections.emptySet());
-        List<String> markersToRemove = new ArrayList<>();
-        for (String oldMarkerId : previousMarkers) {
-            if (!currentMarkerIds.contains(oldMarkerId)) {
-                markersToRemove.add(oldMarkerId);
+            if (needsUpdate) {
+                // Create or update the marker state
+                if (existingState == null) {
+                    viewerMarkerStates.put(markerId, new MarkerState(
+                            markerId, markerName, memberX, memberY, memberZ, memberYaw
+                    ));
+                } else {
+                    existingState.update(markerName, memberX, memberY, memberZ, memberYaw);
+                }
+
+                // Add marker to send list
+                MapMarker marker = new MapMarker(
+                        markerId,
+                        markerName,
+                        PartyMod.PARTY_MARKER_ICON,
+                        PositionUtil.toTransformPacket(transform.getTransform()),
+                        null
+                );
+                markersToSend.add(marker);
             }
         }
 
-        // Update tracked markers
-        if (currentMarkerIds.isEmpty()) {
-            displayedMarkers.remove(viewerUuid);
-        } else {
-            displayedMarkers.put(viewerUuid, currentMarkerIds);
+        // Build markers for fake members (testing)
+        for (FakeMember fakeMember : party.getFakeMembers().values()) {
+            // Update fake member movement (simulates walking around)
+            fakeMember.updateMovement();
+
+            double memberX = fakeMember.getX();
+            double memberY = fakeMember.getY();
+            double memberZ = fakeMember.getZ();
+            float memberYaw = fakeMember.getYaw();
+
+            // Calculate distance to viewer
+            double dx = memberX - viewerX;
+            double dy = memberY - viewerY;
+            double dz = memberZ - viewerZ;
+            int distance = (int) Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+            String markerId = "party-fake-" + fakeMember.getUuid().toString();
+            currentMarkerIds.add(markerId);
+
+            String markerName = fakeMember.getName() + " (" + distance + "m)";
+
+            // Check if this marker needs an update (delta logic)
+            MarkerState existingState = viewerMarkerStates.get(markerId);
+            boolean needsUpdate = (existingState == null) ||
+                    existingState.needsUpdate(markerName, memberX, memberY, memberZ, memberYaw);
+
+            if (needsUpdate) {
+                // Create or update the marker state
+                if (existingState == null) {
+                    viewerMarkerStates.put(markerId, new MarkerState(
+                            markerId, markerName, memberX, memberY, memberZ, memberYaw
+                    ));
+                } else {
+                    existingState.update(markerName, memberX, memberY, memberZ, memberYaw);
+                }
+
+                // Create transform for fake member position
+                com.hypixel.hytale.math.vector.Transform fakeTransform =
+                    new com.hypixel.hytale.math.vector.Transform(memberX, memberY, memberZ);
+
+                // Add marker to send list
+                MapMarker marker = new MapMarker(
+                        markerId,
+                        markerName,
+                        PartyMod.PARTY_MARKER_ICON,
+                        PositionUtil.toTransformPacket(fakeTransform),
+                        null
+                );
+                markersToSend.add(marker);
+            }
         }
 
-        // Send packet directly on main thread
+        // Determine which markers need to be removed
+        List<String> markersToRemove = new ArrayList<>();
+        for (String existingMarkerId : viewerMarkerStates.keySet()) {
+            if (!currentMarkerIds.contains(existingMarkerId)) {
+                markersToRemove.add(existingMarkerId);
+            }
+        }
+
+        // Remove stale marker states
+        for (String removedId : markersToRemove) {
+            viewerMarkerStates.remove(removedId);
+        }
+
+        // Clean up empty viewer entries
+        if (viewerMarkerStates.isEmpty()) {
+            displayedMarkers.remove(viewerUuid);
+        }
+
+        // Send packet only if there are actual changes
         if (!markersToSend.isEmpty() || !markersToRemove.isEmpty()) {
             sendUpdateWorldMapPacket(viewerRef, markersToSend, markersToRemove);
         }
     }
 
     private void removeAllMarkersForPlayer(UUID playerUuid, PlayerRef playerRef) {
-        Set<String> existingMarkers = displayedMarkers.remove(playerUuid);
+        Map<String, MarkerState> existingMarkerStates = displayedMarkers.remove(playerUuid);
 
-        if (existingMarkers != null && !existingMarkers.isEmpty()) {
+        if (existingMarkerStates != null && !existingMarkerStates.isEmpty()) {
             if (playerRef != null) {
-                sendUpdateWorldMapPacket(playerRef, Collections.emptyList(), new ArrayList<>(existingMarkers));
+                sendUpdateWorldMapPacket(playerRef, Collections.emptyList(), new ArrayList<>(existingMarkerStates.keySet()));
             }
         }
     }
@@ -174,19 +330,21 @@ public class PartyMarkerTicker implements Tickable {
     }
 
     /**
-     * Called when a player leaves a party
+     * Called when a player leaves a party.
+     * Removes the leaving player's marker from all party members' views.
      */
     public void onPlayerLeaveParty(UUID playerUuid, Party party) {
         if (party == null) return;
 
         String markerId = "party-member-" + playerUuid.toString();
 
+        // Remove the leaving player's marker from all other party members' views
         for (UUID memberUuid : party.getMemberUuids()) {
             if (memberUuid.equals(playerUuid)) continue;
 
-            Set<String> markers = displayedMarkers.get(memberUuid);
-            if (markers != null) {
-                markers.remove(markerId);
+            Map<String, MarkerState> markerStates = displayedMarkers.get(memberUuid);
+            if (markerStates != null) {
+                markerStates.remove(markerId);
             }
 
             PlayerRef memberRef = Universe.get().getPlayer(memberUuid);
@@ -195,6 +353,7 @@ public class PartyMarkerTicker implements Tickable {
             }
         }
 
+        // Remove all markers for the leaving player
         displayedMarkers.remove(playerUuid);
     }
 }

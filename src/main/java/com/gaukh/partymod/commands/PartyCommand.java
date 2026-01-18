@@ -1,6 +1,7 @@
 package com.gaukh.partymod.commands;
 
 import com.gaukh.partymod.PartyMod;
+import com.gaukh.partymod.party.FakeMember;
 import com.gaukh.partymod.party.Party;
 import com.gaukh.partymod.party.PartyInvite;
 import com.gaukh.partymod.party.PartyManager;
@@ -11,6 +12,7 @@ import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
@@ -36,6 +38,9 @@ public class PartyCommand extends AbstractPlayerCommand {
 
     private final PartyMod plugin;
     private final PartyManager partyManager;
+
+    // Counter for fake member names
+    private static int fakeCounter = 0;
 
     public PartyCommand(@Nonnull PartyMod plugin) {
         super("party", "Party management commands");
@@ -80,6 +85,7 @@ public class PartyCommand extends AbstractPlayerCommand {
             case "kick" -> handleKick(context, playerRef, playerUuid, parts);
             case "disband" -> handleDisband(context, playerRef, playerUuid);
             case "list" -> handleList(context, playerRef, playerUuid);
+            case "debug" -> handleDebug(context, store, ref, playerRef, playerUuid, parts);
             default -> showUsage(context);
         }
     }
@@ -334,5 +340,96 @@ public class PartyCommand extends AbstractPlayerCommand {
         } else {
             context.sendMessage(Message.raw("Failed to create party."));
         }
+    }
+
+    // ==================== DEBUG COMMANDS ====================
+
+    private void handleDebug(@Nonnull CommandContext context,
+                             @Nonnull Store<EntityStore> store,
+                             @Nonnull Ref<EntityStore> ref,
+                             @Nonnull PlayerRef playerRef,
+                             @Nonnull UUID playerUuid,
+                             @Nonnull String[] parts) {
+        String debugAction = parts.length > 2 ? parts[2].toLowerCase() : "help";
+
+        switch (debugAction) {
+            case "addbot" -> handleDebugAddBot(context, store, ref, playerRef, playerUuid);
+            case "removebot", "removebots" -> handleDebugRemoveBots(context, playerUuid);
+            default -> showDebugUsage(context);
+        }
+    }
+
+    private void showDebugUsage(@Nonnull CommandContext context) {
+        context.sendMessage(Message.raw(
+                "Debug Commands:\n" +
+                "/party debug addbot - Add a fake party member (for testing compass markers)\n" +
+                "/party debug removebot - Remove all fake party members"
+        ));
+    }
+
+    private void handleDebugAddBot(@Nonnull CommandContext context,
+                                   @Nonnull Store<EntityStore> store,
+                                   @Nonnull Ref<EntityStore> ref,
+                                   @Nonnull PlayerRef playerRef,
+                                   @Nonnull UUID playerUuid) {
+        // Ensure player is in a party
+        Party party = partyManager.getPartyByPlayer(playerUuid);
+        if (party == null) {
+            // Auto-create party if not in one
+            party = partyManager.createParty(playerUuid);
+            if (party == null) {
+                context.sendMessage(Message.raw("Failed to create party."));
+                return;
+            }
+            context.sendMessage(Message.raw("Party created automatically."));
+        }
+
+        // Get player position for fake member spawn
+        Player playerComponent = store.getComponent(ref, Player.getComponentType());
+        if (playerComponent == null) {
+            context.sendMessage(Message.raw("Could not get player position."));
+            return;
+        }
+
+        TransformComponent transformComponent = playerComponent.getTransformComponent();
+        if (transformComponent == null) {
+            context.sendMessage(Message.raw("Could not get player transform."));
+            return;
+        }
+
+        // Get spawn position (10 blocks away from player)
+        double px = transformComponent.getTransform().getPosition().getX();
+        double py = transformComponent.getTransform().getPosition().getY();
+        double pz = transformComponent.getTransform().getPosition().getZ();
+
+        // Create fake member with offset position
+        String fakeName = "FakePartyMember_" + fakeCounter++;
+        FakeMember fakeMember = new FakeMember(fakeName, px + 10, py, pz + 10);
+
+        // Add fake member to party
+        party.addFakeMember(fakeMember);
+
+        context.sendMessage(Message.raw("Added fake party member '" + fakeName + "' at position (" +
+                (int)(px + 10) + ", " + (int)py + ", " + (int)(pz + 10) + "). " +
+                "Check your compass!"));
+    }
+
+    private void handleDebugRemoveBots(@Nonnull CommandContext context,
+                                       @Nonnull UUID playerUuid) {
+        Party party = partyManager.getPartyByPlayer(playerUuid);
+        if (party == null) {
+            context.sendMessage(Message.raw("You are not in a party."));
+            return;
+        }
+
+        if (!party.hasFakeMembers()) {
+            context.sendMessage(Message.raw("No fake members to remove."));
+            return;
+        }
+
+        int count = party.getFakeMembers().size();
+        party.clearFakeMembers();
+
+        context.sendMessage(Message.raw("Removed " + count + " fake member(s)."));
     }
 }

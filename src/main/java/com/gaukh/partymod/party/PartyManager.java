@@ -103,6 +103,19 @@ public class PartyManager {
         return playerPartyMap.containsKey(playerUuid);
     }
 
+    /**
+     * Directly add a player to the party map (for debug/testing purposes).
+     * This bypasses the invite system.
+     */
+    public void addPlayerToPartyMap(@Nonnull UUID playerUuid, @Nonnull Party party) {
+        playerPartyMap.put(playerUuid, party.getId());
+        try {
+            PartyStorage.addMember(party.getId(), playerUuid);
+        } catch (SQLException e) {
+            LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
+        }
+    }
+
     public boolean sendInvite(@Nonnull UUID inviterUuid, @Nonnull UUID inviteeUuid) {
         if (isInParty(inviteeUuid)) {
             return false;

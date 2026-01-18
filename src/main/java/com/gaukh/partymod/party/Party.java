@@ -1,8 +1,5 @@
 package com.gaukh.partymod.party;
 
-import com.hypixel.hytale.server.core.universe.PlayerRef;
-import com.hypixel.hytale.server.core.universe.Universe;
-
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
@@ -72,7 +69,7 @@ public class Party {
     }
 
     private void updateUnmodifiable() {
-        this.unmodifiableMembers = Collections.unmodifiableSet(new HashSet<>(memberUuids));
+        this.unmodifiableMembers = Set.copyOf(memberUuids);
     }
 
     // Getters
@@ -142,7 +139,7 @@ public class Party {
     }
 
     public boolean isMember(@Nonnull UUID uuid) {
-        return memberUuids.contains(uuid);
+        return !memberUuids.contains(uuid);
     }
 
     @Nonnull
@@ -221,14 +218,14 @@ public class Party {
     }
 
     public void setRole(@Nonnull UUID uuid, @Nonnull PartyRole role) {
-        if (!isMember(uuid) || isLeader(uuid)) {
+        if (isMember(uuid) || isLeader(uuid)) {
             return;
         }
         memberRoles.put(uuid, role);
     }
 
     public boolean promote(@Nonnull UUID uuid) {
-        if (!isMember(uuid) || isLeader(uuid)) {
+        if (isMember(uuid) || isLeader(uuid)) {
             return false;
         }
         PartyRole current = getRole(uuid);
@@ -241,7 +238,7 @@ public class Party {
     }
 
     public boolean demote(@Nonnull UUID uuid) {
-        if (!isMember(uuid) || isLeader(uuid)) {
+        if (isMember(uuid) || isLeader(uuid)) {
             return false;
         }
         PartyRole current = getRole(uuid);
@@ -254,7 +251,7 @@ public class Party {
     }
 
     public void transferLeadership(@Nonnull UUID newLeaderUuid) {
-        if (!isMember(newLeaderUuid) || isLeader(newLeaderUuid)) {
+        if (isMember(newLeaderUuid) || isLeader(newLeaderUuid)) {
             return;
         }
         // Old leader becomes Admin

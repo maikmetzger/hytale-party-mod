@@ -4,7 +4,20 @@
       "WebFetch(domain:hytale-docs.pages.dev)",
       "Bash(grep:*)",
       "Bash(find:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(dir /s /b \"H:\\\\Programmierung\\\\Hytale\\\\Mods\")",
+      "Bash(findstr:*)",
+      "Bash(dir:*)",
+      "Bash(jar tf:*)",
+      "Bash(xargs -I {} bash -c 'strings \"\"{}\"\" 2>/dev/null | grep -q \"\"sendTo\\\\|send\\(\"\" && echo \"\"{}\"\"')",
+      "Bash(xargs strings:*)",
+      "Bash(ls:*)",
+      "Bash(sort:*)",
+      "Bash(java -version:*)",
+      "Bash(xargs -I {} bash -c 'strings \"\"{}\"\" | grep -i \"\"UpdateWorldMap\"\" && echo \"\"Found in {}\"\"')",
+      "Bash(unzip:*)",
+      "Bash(javap:*)",
+      "Bash(xargs ls:*)"
     ]
   }
 }

@@ -222,7 +222,7 @@ public class PartyManager {
 
     public boolean kickPlayer(@Nonnull UUID actorUuid, @Nonnull UUID targetUuid) {
         Party party = getPartyByPlayer(actorUuid);
-        if (party == null || !party.isMember(targetUuid)) {
+        if (party == null || party.isMember(targetUuid)) {
             return false;
         }
         // Leader can kick anyone, others need higher role
@@ -238,7 +238,7 @@ public class PartyManager {
 
     public boolean promotePlayer(@Nonnull UUID actorUuid, @Nonnull UUID targetUuid) {
         Party party = getPartyByPlayer(actorUuid);
-        if (party == null || !party.isMember(targetUuid)) {
+        if (party == null || party.isMember(targetUuid)) {
             return false;
         }
         // Only leader can promote
@@ -266,7 +266,7 @@ public class PartyManager {
 
     public boolean demotePlayer(@Nonnull UUID actorUuid, @Nonnull UUID targetUuid) {
         Party party = getPartyByPlayer(actorUuid);
-        if (party == null || !party.isMember(targetUuid)) {
+        if (party == null || party.isMember(targetUuid)) {
             return false;
         }
         // Only leader can demote
@@ -297,7 +297,7 @@ public class PartyManager {
         if (party == null || !party.isLeader(leaderUuid)) {
             return false;
         }
-        if (!party.isMember(newLeaderUuid) || party.isLeader(newLeaderUuid)) {
+        if (party.isMember(newLeaderUuid) || party.isLeader(newLeaderUuid)) {
             return false;
         }
 

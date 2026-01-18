@@ -26,16 +26,16 @@ import java.util.UUID;
 public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
     private enum ViewState {
-        NO_PARTY,
-        CREATE_PARTY,
+        NO_PARTY_VIEW,
+        CREATE_PARTY_VIEW,
         PARTY_VIEW,
         SETTINGS_VIEW,
         INVITE_VIEW,
-        PLAYER_ACTION,
-        INVITES_LIST,
-        PASSWORD_ENTRY,
-        JOIN_REQUESTS,
-        CONFIRM
+        PLAYER_ACTION_VIEW,
+        INVITES_LIST_VIEW,
+        ENTER_PASSWORD_VIEW,
+        JOIN_REQUEST_VIEW,
+        CONFIRMATION_VIEW
     }
 
     private enum TabState {
@@ -46,7 +46,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
     private final PartyManager partyManager;
 
     // View state
-    private ViewState currentView = ViewState.NO_PARTY;
+    private ViewState currentView = ViewState.NO_PARTY_VIEW;
     private TabState currentTab = TabState.PARTY;
 
     // Input values
@@ -211,7 +211,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
             // Create Party Flow
             case "showCreateParty" -> {
-                currentView = ViewState.CREATE_PARTY;
+                currentView = ViewState.CREATE_PARTY_VIEW;
                 // Set defaults for new party
                 inputPartyName = playerRef.getUsername() + "'s Party";
                 inputPassword = "";
@@ -220,7 +220,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
                 refreshUI(ref, store);
             }
             case "backFromCreate" -> {
-                currentView = ViewState.NO_PARTY;
+                currentView = ViewState.NO_PARTY_VIEW;
                 refreshUI(ref, store);
             }
             case "setCreateAccessType" -> {
@@ -284,7 +284,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             case "showPasswordEntry" -> {
                 if (target != null) {
                     pendingJoinPartyId = target;
-                    currentView = ViewState.PASSWORD_ENTRY;
+                    currentView = ViewState.ENTER_PASSWORD_VIEW;
                     inputPassword = "";
                 }
                 refreshUI(ref, store);
@@ -301,7 +301,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
             // Password Entry
             case "backFromPassword" -> {
-                currentView = ViewState.NO_PARTY;
+                currentView = ViewState.NO_PARTY_VIEW;
                 pendingJoinPartyId = null;
                 refreshUI(ref, store);
             }
@@ -328,11 +328,11 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
             // Invites View
             case "viewInvites" -> {
-                currentView = ViewState.INVITES_LIST;
+                currentView = ViewState.INVITES_LIST_VIEW;
                 refreshUI(ref, store);
             }
             case "backFromInvites" -> {
-                currentView = ViewState.NO_PARTY;
+                currentView = ViewState.NO_PARTY_VIEW;
                 refreshUI(ref, store);
             }
 
@@ -383,7 +383,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
             // Join Requests (Leader)
             case "viewJoinRequests" -> {
-                currentView = ViewState.JOIN_REQUESTS;
+                currentView = ViewState.JOIN_REQUEST_VIEW;
                 refreshUI(ref, store);
             }
             case "backFromRequests" -> {
@@ -439,7 +439,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             case "executeConfirm" -> {
                 if ("leave".equals(pendingConfirmAction)) {
                     partyManager.leaveParty(playerRef.getUuid(), false);
-                    currentView = ViewState.NO_PARTY;
+                    currentView = ViewState.NO_PARTY_VIEW;
                     pendingConfirmAction = null;
                     refreshUI(ref, store);
                 } else if ("disband".equals(pendingConfirmAction)) {
@@ -447,7 +447,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
                     if (party != null) {
                         partyManager.disbandParty(party.getId());
                     }
-                    currentView = ViewState.NO_PARTY;
+                    currentView = ViewState.NO_PARTY_VIEW;
                     pendingConfirmAction = null;
                     refreshUI(ref, store);
                 } else if ("transferLeadership".equals(pendingConfirmAction) && selectedPlayerUuid != null) {
@@ -463,7 +463,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             case "selectPlayer" -> {
                 if (target != null) {
                     selectedPlayerUuid = UUID.fromString(target);
-                    currentView = ViewState.PLAYER_ACTION;
+                    currentView = ViewState.PLAYER_ACTION_VIEW;
                     refreshUI(ref, store);
                 }
             }
@@ -532,13 +532,13 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         hideAllViews(cmd);
 
         // Show pending invite section if there's an invite (but not in invites list view)
-        cmd.set("#InviteSection.Visible", invite != null && currentView != ViewState.INVITES_LIST);
+        cmd.set("#InviteSection.Visible", invite != null && currentView != ViewState.INVITES_LIST_VIEW);
 
         // Tab bar visibility and state
         boolean isInParty = party != null;
         boolean isLeader = party != null && party.isLeader(playerUuid);
 
-        cmd.set("#TabBar.Visible", isInParty && currentView != ViewState.CONFIRM);
+        cmd.set("#TabBar.Visible", isInParty && currentView != ViewState.CONFIRMATION_VIEW);
         cmd.set("#SettingsTab.Visible", isLeader);
 
         // Set selected tab
@@ -557,29 +557,29 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         if (!isInParty) {
             // If not in party, reset party-related views to NO_PARTY
             if (currentView == ViewState.PARTY_VIEW || currentView == ViewState.SETTINGS_VIEW ||
-                currentView == ViewState.INVITE_VIEW || currentView == ViewState.PLAYER_ACTION ||
-                currentView == ViewState.JOIN_REQUESTS) {
-                currentView = ViewState.NO_PARTY;
+                currentView == ViewState.INVITE_VIEW || currentView == ViewState.PLAYER_ACTION_VIEW ||
+                currentView == ViewState.JOIN_REQUEST_VIEW) {
+                currentView = ViewState.NO_PARTY_VIEW;
             }
         } else {
             // If in party, don't show NO_PARTY or CREATE_PARTY views
-            if (currentView == ViewState.NO_PARTY || currentView == ViewState.CREATE_PARTY ||
-                currentView == ViewState.INVITES_LIST || currentView == ViewState.PASSWORD_ENTRY) {
+            if (currentView == ViewState.NO_PARTY_VIEW || currentView == ViewState.CREATE_PARTY_VIEW ||
+                currentView == ViewState.INVITES_LIST_VIEW || currentView == ViewState.ENTER_PASSWORD_VIEW) {
                 currentView = ViewState.PARTY_VIEW;
             }
         }
 
         // Build appropriate view
         switch (currentView) {
-            case NO_PARTY -> buildNoPartyView(cmd, events);
-            case CREATE_PARTY -> buildCreatePartyView(cmd, events);
+            case NO_PARTY_VIEW -> buildNoPartyView(cmd, events);
+            case CREATE_PARTY_VIEW -> buildCreatePartyView(cmd, events);
             case PARTY_VIEW -> buildPartyView(cmd, events, playerUuid, party);
             case SETTINGS_VIEW -> buildSettingsView(cmd, events, party);
             case INVITE_VIEW -> buildInvitePlayersView(cmd, events, playerUuid);
-            case PLAYER_ACTION -> buildPlayerActionView(cmd, events, playerUuid, party);
-            case INVITES_LIST -> buildInvitesListView(cmd, events, playerUuid);
-            case PASSWORD_ENTRY -> buildPasswordEntryView(cmd, events);
-            case JOIN_REQUESTS -> buildJoinRequestsView(cmd, events, party);
+            case PLAYER_ACTION_VIEW -> buildPlayerActionView(cmd, events, playerUuid, party);
+            case INVITES_LIST_VIEW -> buildInvitesListView(cmd, events, playerUuid);
+            case ENTER_PASSWORD_VIEW -> buildPasswordEntryView(cmd, events);
+            case JOIN_REQUEST_VIEW -> buildJoinRequestsView(cmd, events, party);
         }
     }
 

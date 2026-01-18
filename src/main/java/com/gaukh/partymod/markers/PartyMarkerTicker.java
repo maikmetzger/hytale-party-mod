@@ -3,9 +3,11 @@ package com.gaukh.partymod.markers;
 import com.gaukh.partymod.PartyMod;
 import com.gaukh.partymod.party.FakeMember;
 import com.gaukh.partymod.party.Party;
+import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.system.tick.TickingSystem;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.protocol.packets.worldmap.MapMarker;
 import com.hypixel.hytale.protocol.packets.worldmap.UpdateWorldMap;
 import com.hypixel.hytale.server.core.entity.entities.Player;
@@ -106,7 +108,7 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
         accumulator += dt;
         if (accumulator >= UPDATE_INTERVAL) {
             accumulator = 0f;
-            updateAllPartyMarkers();
+            updateAllPartyMarkers(store);
         }
     }
 
@@ -114,11 +116,11 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
      * Update markers for all online players.
      * Runs on MAIN THREAD - safe to call getComponent().
      */
-    private void updateAllPartyMarkers() {
+    private void updateAllPartyMarkers(Store<EntityStore> store) {
         try {
             for (PlayerRef viewerRef : Universe.get().getPlayers()) {
                 try {
-                    updateMarkersForPlayer(viewerRef);
+                    updateMarkersForPlayer(viewerRef, store);
                 } catch (Exception e) {
                     // Ignore errors for individual players (they may not be fully initialized)
                 }
@@ -128,7 +130,7 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
         }
     }
 
-    private void updateMarkersForPlayer(PlayerRef viewerRef) {
+    private void updateMarkersForPlayer(PlayerRef viewerRef, Store<EntityStore> store) {
         UUID viewerUuid = viewerRef.getUuid();
 
         // Check if player is in a party
@@ -229,12 +231,30 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
         // Build markers for fake members (testing)
         for (FakeMember fakeMember : party.getFakeMembers().values()) {
             // Update fake member movement (simulates walking around)
-            fakeMember.updateMovement();
+            boolean moved = fakeMember.updateMovement();
 
             double memberX = fakeMember.getX();
             double memberY = fakeMember.getY();
             double memberZ = fakeMember.getZ();
             float memberYaw = fakeMember.getYaw();
+
+            // Update NPC entity position if it exists and moved
+            if (moved && fakeMember.hasEntity()) {
+                try {
+                    Ref<EntityStore> entityRef = fakeMember.getEntityRef();
+                    if (entityRef != null && entityRef.isValid()) {
+                        TransformComponent npcTransform = store.getComponent(entityRef, TransformComponent.getComponentType());
+                        if (npcTransform != null) {
+                            Vector3d npcPosition = npcTransform.getPosition();
+                            npcPosition.x = memberX;
+                            npcPosition.y = memberY;
+                            npcPosition.z = memberZ;
+                        }
+                    }
+                } catch (Exception e) {
+                    // Ignore entity update errors
+                }
+            }
 
             // Calculate distance to viewer
             double dx = memberX - viewerX;

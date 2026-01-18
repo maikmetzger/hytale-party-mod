@@ -6,17 +6,24 @@ import com.gaukh.partymod.party.Party;
 import com.gaukh.partymod.party.PartyInvite;
 import com.gaukh.partymod.party.PartyManager;
 import com.gaukh.partymod.pages.PartyMenuPage;
+import it.unimi.dsi.fastutil.Pair;
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.math.vector.Vector3d;
+import com.hypixel.hytale.math.vector.Vector3f;
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.entity.nameplate.Nameplate;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.npc.NPCPlugin;
 
 import javax.annotation.Nonnull;
 import java.util.UUID;
@@ -354,7 +361,7 @@ public class PartyCommand extends AbstractPlayerCommand {
 
         switch (debugAction) {
             case "addbot" -> handleDebugAddBot(context, store, ref, playerRef, playerUuid);
-            case "removebot", "removebots" -> handleDebugRemoveBots(context, playerUuid);
+            case "removebot", "removebots" -> handleDebugRemoveBots(context, store, playerUuid);
             default -> showDebugUsage(context);
         }
     }
@@ -404,17 +411,56 @@ public class PartyCommand extends AbstractPlayerCommand {
 
         // Create fake member with offset position
         String fakeName = "FakePartyMember_" + fakeCounter++;
-        FakeMember fakeMember = new FakeMember(fakeName, px + 10, py, pz + 10);
+        double spawnX = px + 10;
+        double spawnY = py;
+        double spawnZ = pz + 10;
 
-        // Add fake member to party
+        FakeMember fakeMember = new FakeMember(fakeName, spawnX, spawnY, spawnZ);
+
+        // Try to spawn an NPC entity for the fake member
+        String npcType = "Kweebec_Sproutling"; // Kweebec NPC type
+        try {
+            NPCPlugin npcPlugin = NPCPlugin.get();
+            if (npcPlugin != null) {
+                Vector3d spawnPos = new Vector3d(spawnX, spawnY, spawnZ);
+                Vector3f rotation = new Vector3f(0, 0, 0);
+
+                Pair<Ref<EntityStore>, INonPlayerCharacter> npcPair =
+                        npcPlugin.spawnNPC(store, npcType, null, spawnPos, rotation);
+
+                if (npcPair != null) {
+                    Ref<EntityStore> npcRef = npcPair.first();
+                    fakeMember.setEntityRef(npcRef);
+                    fakeMember.setNpcType(npcType);
+
+                    // Set nameplate on the NPC
+                    Nameplate nameplate = store.getComponent(npcRef, Nameplate.getComponentType());
+                    if (nameplate != null) {
+                        nameplate.setText(fakeName);
+                    } else {
+                        // Try to add nameplate component
+                        store.putComponent(npcRef, Nameplate.getComponentType(), new Nameplate(fakeName));
+                    }
+
+                    context.sendMessage(Message.raw("Spawned visible NPC '" + fakeName + "' at (" +
+                            (int)spawnX + ", " + (int)spawnY + ", " + (int)spawnZ + ")."));
+                } else {
+                    context.sendMessage(Message.raw("Could not spawn NPC (type '" + npcType + "' not found). " +
+                            "Using marker-only mode."));
+                }
+            }
+        } catch (Exception e) {
+            context.sendMessage(Message.raw("NPC spawning failed: " + e.getMessage() + ". Using marker-only mode."));
+        }
+
+        // Add fake member to party (will show on compass regardless of NPC spawn)
         party.addFakeMember(fakeMember);
 
-        context.sendMessage(Message.raw("Added fake party member '" + fakeName + "' at position (" +
-                (int)(px + 10) + ", " + (int)py + ", " + (int)(pz + 10) + "). " +
-                "Check your compass!"));
+        context.sendMessage(Message.raw("Added fake party member '" + fakeName + "'. Check your compass!"));
     }
 
     private void handleDebugRemoveBots(@Nonnull CommandContext context,
+                                       @Nonnull Store<EntityStore> store,
                                        @Nonnull UUID playerUuid) {
         Party party = partyManager.getPartyByPlayer(playerUuid);
         if (party == null) {
@@ -428,8 +474,29 @@ public class PartyCommand extends AbstractPlayerCommand {
         }
 
         int count = party.getFakeMembers().size();
+        int entitiesRemoved = 0;
+
+        // Remove NPC entities for fake members
+        for (FakeMember fakeMember : party.getFakeMembers().values()) {
+            if (fakeMember.hasEntity()) {
+                try {
+                    Ref<EntityStore> entityRef = fakeMember.getEntityRef();
+                    if (entityRef != null && entityRef.isValid()) {
+                        store.removeEntity(entityRef, RemoveReason.REMOVE);
+                        entitiesRemoved++;
+                    }
+                } catch (Exception e) {
+                    // Ignore removal errors
+                }
+            }
+        }
+
         party.clearFakeMembers();
 
-        context.sendMessage(Message.raw("Removed " + count + " fake member(s)."));
+        String message = "Removed " + count + " fake member(s)";
+        if (entitiesRemoved > 0) {
+            message += " and " + entitiesRemoved + " NPC entity(ies)";
+        }
+        context.sendMessage(Message.raw(message + "."));
     }
 }

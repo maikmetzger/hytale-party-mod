@@ -1,6 +1,10 @@
 package com.gaukh.partymod.party;
 
+import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.Random;
 import java.util.UUID;
 
@@ -8,6 +12,7 @@ import java.util.UUID;
  * Represents a fake party member for testing purposes.
  * Fake members have a simulated position and appear on the compass.
  * They can move randomly to test the delta update system.
+ * Optionally, they can have a visible NPC entity in the world.
  */
 public class FakeMember {
 
@@ -22,6 +27,11 @@ public class FakeMember {
     private double moveSpeed = 0.5; // blocks per tick update
     private boolean isMoving = true;
     private final Random random = new Random();
+
+    // NPC Entity reference (optional - for visible models)
+    @Nullable
+    private Ref<EntityStore> entityRef;
+    private String npcType;
 
     public FakeMember(@Nonnull String name, double x, double y, double z) {
         this.uuid = UUID.randomUUID();
@@ -121,8 +131,48 @@ public class FakeMember {
         return true;
     }
 
+    // ==================== NPC Entity Methods ====================
+
+    /**
+     * Set the NPC entity reference for this fake member.
+     */
+    public void setEntityRef(@Nullable Ref<EntityStore> entityRef) {
+        this.entityRef = entityRef;
+    }
+
+    /**
+     * Get the NPC entity reference (may be null if no NPC spawned).
+     */
+    @Nullable
+    public Ref<EntityStore> getEntityRef() {
+        return entityRef;
+    }
+
+    /**
+     * Check if this fake member has a spawned NPC entity.
+     */
+    public boolean hasEntity() {
+        return entityRef != null && entityRef.isValid();
+    }
+
+    /**
+     * Set the NPC type used for spawning.
+     */
+    public void setNpcType(@Nullable String npcType) {
+        this.npcType = npcType;
+    }
+
+    /**
+     * Get the NPC type used for spawning.
+     */
+    @Nullable
+    public String getNpcType() {
+        return npcType;
+    }
+
     @Override
     public String toString() {
-        return "FakeMember{name='" + name + "', pos=(" + x + ", " + y + ", " + z + ")}";
+        return "FakeMember{name='" + name + "', pos=(" + x + ", " + y + ", " + z + ")" +
+                (hasEntity() ? ", hasEntity=true" : "") + "}";
     }
 }

@@ -92,7 +92,7 @@ public class PartyCommand extends AbstractPlayerCommand {
             case "kick" -> handleKick(context, playerRef, playerUuid, parts);
             case "disband" -> handleDisband(context, playerRef, playerUuid);
             case "list" -> handleList(context, playerRef, playerUuid);
-            case "debug" -> handleDebug(context, store, ref, playerRef, playerUuid, parts);
+            // case "debug" -> handleDebug(context, store, ref, playerRef, playerUuid, parts);
             default -> showUsage(context);
         }
     }

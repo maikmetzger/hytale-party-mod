@@ -22,9 +22,9 @@ public class FakeMember {
     private float yaw;
 
     // Movement simulation
-    private double originX, originZ;
+    private final double originX;
+    private final double originZ;
     private double targetX, targetZ;
-    private double moveSpeed = 0.5; // blocks per tick update
     private boolean isMoving = true;
     private final Random random = new Random();
 
@@ -119,6 +119,8 @@ public class FakeMember {
 
         // Move towards target
         double dist = Math.sqrt(distSq);
+        // blocks per tick update
+        double moveSpeed = 0.5;
         double moveX = (dx / dist) * moveSpeed;
         double moveZ = (dz / dist) * moveSpeed;
 

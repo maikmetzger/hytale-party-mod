@@ -53,8 +53,7 @@ public class PartyManager {
 
     @Nullable
     public Party createParty(@Nonnull UUID leaderUuid) {
-        PlayerRef ref = Universe.get().getPlayer(leaderUuid);
-        String name = ref != null ? ref.getUsername() + "'s Party" : "Party";
+        String name = Party.getPlayerName(leaderUuid) + "'s Party";
         return createParty(leaderUuid, name);
     }
 
@@ -163,8 +162,7 @@ public class PartyManager {
             LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
         }
 
-        PlayerRef inviteeRef = Universe.get().getPlayer(inviteeUuid);
-        String inviteeName = inviteeRef != null ? inviteeRef.getUsername() : inviteeUuid.toString();
+        String inviteeName = Party.getPlayerName(inviteeUuid);
         broadcastToParty(party, Message.raw(inviteeName + " joined the party."));
         return party;
     }
@@ -193,8 +191,7 @@ public class PartyManager {
             return false;
         }
 
-        PlayerRef playerRef = Universe.get().getPlayer(playerUuid);
-        String playerName = playerRef != null ? playerRef.getUsername() : playerUuid.toString();
+        String playerName = Party.getPlayerName(playerUuid);
 
         if (party.isLeader(playerUuid)) {
             UUID newLeader = party.getNextLeaderCandidate();
@@ -227,8 +224,8 @@ public class PartyManager {
             }
         }
 
-        if (wasKicked && playerRef != null) {
-            playerRef.sendMessage(Message.raw("You have been kicked from the party."));
+        if (wasKicked) {
+            Party.sendMessageToPlayer(playerUuid, Message.raw("You have been kicked from the party."));
         }
         return true;
     }
@@ -270,8 +267,7 @@ public class PartyManager {
                 LOGGER.atWarning().withCause(e).log("Failed to update role in storage");
             }
 
-            PlayerRef targetRef = Universe.get().getPlayer(targetUuid);
-            String targetName = targetRef != null ? targetRef.getUsername() : targetUuid.toString();
+            String targetName = Party.getPlayerName(targetUuid);
             broadcastToParty(party, Message.raw(targetName + " was promoted to " + party.getRoleDisplayName(targetUuid) + "."));
         }
         return promoted;
@@ -298,8 +294,7 @@ public class PartyManager {
                 LOGGER.atWarning().withCause(e).log("Failed to update role in storage");
             }
 
-            PlayerRef targetRef = Universe.get().getPlayer(targetUuid);
-            String targetName = targetRef != null ? targetRef.getUsername() : targetUuid.toString();
+            String targetName = Party.getPlayerName(targetUuid);
             broadcastToParty(party, Message.raw(targetName + " was demoted to " + party.getRoleDisplayName(targetUuid) + "."));
         }
         return demoted;
@@ -323,8 +318,7 @@ public class PartyManager {
             LOGGER.atWarning().withCause(e).log("Failed to update leadership in storage");
         }
 
-        PlayerRef newLeaderRef = Universe.get().getPlayer(newLeaderUuid);
-        String newLeaderName = newLeaderRef != null ? newLeaderRef.getUsername() : newLeaderUuid.toString();
+        String newLeaderName = Party.getPlayerName(newLeaderUuid);
         broadcastToParty(party, Message.raw(newLeaderName + " is now the party leader."));
         return true;
     }
@@ -379,8 +373,7 @@ public class PartyManager {
             LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
         }
 
-        PlayerRef playerRef = Universe.get().getPlayer(playerUuid);
-        String playerName = playerRef != null ? playerRef.getUsername() : playerUuid.toString();
+        String playerName = Party.getPlayerName(playerUuid);
         broadcastToParty(party, Message.raw(playerName + " joined the party."));
         return true;
     }
@@ -406,8 +399,7 @@ public class PartyManager {
             LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
         }
 
-        PlayerRef playerRef = Universe.get().getPlayer(playerUuid);
-        String playerName = playerRef != null ? playerRef.getUsername() : playerUuid.toString();
+        String playerName = Party.getPlayerName(playerUuid);
         broadcastToParty(party, Message.raw(playerName + " joined the party."));
         return true;
     }
@@ -440,9 +432,9 @@ public class PartyManager {
 
         // Notify leader
         PlayerRef leaderRef = Universe.get().getPlayer(party.getLeaderUuid());
-        PlayerRef requesterRef = Universe.get().getPlayer(playerUuid);
-        if (leaderRef != null && requesterRef != null) {
-            leaderRef.sendMessage(Message.raw(requesterRef.getUsername() + " wants to join your party."));
+        if (leaderRef != null) {
+            String requesterName = Party.getPlayerName(playerUuid);
+            leaderRef.sendMessage(Message.raw(requesterName + " wants to join your party."));
         }
 
         return true;
@@ -485,13 +477,10 @@ public class PartyManager {
             LOGGER.atWarning().withCause(e).log("Failed to add member to storage");
         }
 
-        PlayerRef requesterRef = Universe.get().getPlayer(requesterUuid);
-        String name = requesterRef != null ? requesterRef.getUsername() : requesterUuid.toString();
-        broadcastToParty(party, Message.raw(name + " joined the party."));
+        String requesterName = Party.getPlayerName(requesterUuid);
+        broadcastToParty(party, Message.raw(requesterName + " joined the party."));
 
-        if (requesterRef != null) {
-            requesterRef.sendMessage(Message.raw("Your join request was accepted!"));
-        }
+        Party.sendMessageToPlayer(requesterUuid, Message.raw("Your join request was accepted!"));
 
         return true;
     }
@@ -514,10 +503,7 @@ public class PartyManager {
                 LOGGER.atWarning().withCause(e).log("Failed to delete join request");
             }
 
-            PlayerRef requesterRef = Universe.get().getPlayer(requesterUuid);
-            if (requesterRef != null) {
-                requesterRef.sendMessage(Message.raw("Your join request was declined."));
-            }
+            Party.sendMessageToPlayer(requesterUuid, Message.raw("Your join request was declined."));
         }
         return removed;
     }

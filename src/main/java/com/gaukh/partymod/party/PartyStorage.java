@@ -374,4 +374,8 @@ public class PartyStorage {
             }
         }
     }
+    
+    public static Wrapper getInstance() {
+        return connection;
+    }
 }

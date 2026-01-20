@@ -1,5 +1,9 @@
 package com.gaukh.partymod.party;
 
+import com.hypixel.hytale.server.core.Message;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
@@ -283,6 +287,117 @@ public class Party {
         return null;
     }
 
+    // ==================== PLAYER UTILITY METHODS ====================
+
+    /**
+     * Gets a player's username from their UUID.
+     * This is a static utility that fetches from Universe on-demand.
+     *
+     * @param uuid the player's UUID
+     * @return the player's username, or "Unknown" if not found/offline
+     */
+    @Nonnull
+    public static String getPlayerName(@Nonnull UUID uuid) {
+        PlayerRef ref = Universe.get().getPlayer(uuid);
+        return ref != null ? ref.getUsername() : "Unknown";
+    }
+
+    /**
+     * Checks if a player is currently online.
+     *
+     * @param uuid the player's UUID
+     * @return true if the player is online, false otherwise
+     */
+    public static boolean isPlayerOnline(@Nonnull UUID uuid) {
+        return Universe.get().getPlayer(uuid) != null;
+    }
+
+    /**
+     * Gets a member's display name. Checks fake members first (for testing),
+     * then falls back to the real player name from Universe.
+     *
+     * @param uuid the member's UUID
+     * @return the member's display name
+     */
+    @Nonnull
+    public String getMemberName(@Nonnull UUID uuid) {
+        // Check fake members first (for testing)
+        FakeMember fake = getFakeMember(uuid);
+        if (fake != null) {
+            return fake.getName();
+        }
+        return getPlayerName(uuid);
+    }
+
+    /**
+     * Gets the member's status string showing their role and online status.
+     * Format: "Admin" or "Admin (Offline)"
+     *
+     * @param uuid the member's UUID
+     * @return formatted status string
+     */
+    @Nonnull
+    public String getMemberStatus(@Nonnull UUID uuid) {
+        String role = getRoleDisplayName(uuid);
+        // Fake members are always "online" for display purposes
+        if (getFakeMember(uuid) != null) {
+            return role;
+        }
+        return isPlayerOnline(uuid) ? role : role + " (Offline)";
+    }
+
+    /**
+     * Gets all member UUIDs mapped to their display names.
+     * Useful for populating UI lists.
+     *
+     * @return ordered map of UUID to member name
+     */
+    @Nonnull
+    public Map<UUID, String> getMemberNames() {
+        Map<UUID, String> result = new LinkedHashMap<>();
+        for (UUID uuid : memberUuids) {
+            result.put(uuid, getMemberName(uuid));
+        }
+        // Include fake members
+        if (fakeMembers != null) {
+            for (UUID uuid : fakeMembers.keySet()) {
+                result.put(uuid, getMemberName(uuid));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Sends a message to a player if they are online.
+     * Silently does nothing if the player is offline.
+     *
+     * @param uuid the player's UUID
+     * @param message the message to send
+     */
+    public static void sendMessageToPlayer(@Nonnull UUID uuid, @Nonnull Message message) {
+        PlayerRef ref = Universe.get().getPlayer(uuid);
+        if (ref != null) {
+            ref.sendMessage(message);
+        }
+    }
+
+    /**
+     * Adjusts a value up or down within specified bounds.
+     *
+     * @param action "increase" or "decrease"
+     * @param currentValue the current value
+     * @param min minimum allowed value
+     * @param max maximum allowed value
+     * @return the adjusted value, clamped to bounds
+     */
+    public static int adjustBounded(@Nullable String action, int currentValue, int min, int max) {
+        if ("increase".equals(action)) {
+            return Math.min(max, currentValue + 1);
+        } else if ("decrease".equals(action)) {
+            return Math.max(min, currentValue - 1);
+        }
+        return currentValue;
+    }
 
     @Override
     public int hashCode() {

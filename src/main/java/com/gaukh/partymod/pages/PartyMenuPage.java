@@ -230,11 +230,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
                 }
             }
             case "createMaxMembersChange" -> {
-                if ("increase".equals(target)) {
-                    selectedMaxMembers = Math.min(20, selectedMaxMembers + 1);
-                } else if ("decrease".equals(target)) {
-                    selectedMaxMembers = Math.max(1, selectedMaxMembers - 1);
-                }
+                selectedMaxMembers = Party.adjustBounded(target, selectedMaxMembers, 1, 20);
                 refreshUI(ref, store);
             }
             case "confirmCreate" -> {
@@ -347,11 +343,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
                 refreshUI(ref, store);
             }
             case "maxMembersChange" -> {
-                if ("increase".equals(target)) {
-                    selectedMaxMembers = Math.min(20, selectedMaxMembers + 1);
-                } else if ("decrease".equals(target)) {
-                    selectedMaxMembers = Math.max(1, selectedMaxMembers - 1);
-                }
+                selectedMaxMembers = Party.adjustBounded(target, selectedMaxMembers, 1, 20);
                 refreshUI(ref, store);
             }
             case "saveSettings" -> {
@@ -606,8 +598,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             cmd.set("#ConfirmTitle.Text", "Disband Party");
             cmd.set("#ConfirmMessage.Text", "Are you sure you want to disband the party?");
         } else if ("transferLeadership".equals(pendingConfirmAction)) {
-            PlayerRef selectedRef = selectedPlayerUuid != null ? Universe.get().getPlayer(selectedPlayerUuid) : null;
-            String selectedName = selectedRef != null ? selectedRef.getUsername() : "this player";
+            String selectedName = selectedPlayerUuid != null ? Party.getPlayerName(selectedPlayerUuid) : "this player";
             cmd.set("#ConfirmTitle.Text", "Transfer Leadership");
             cmd.set("#ConfirmMessage.Text", "Make " + selectedName + " the new party leader?");
         }
@@ -631,8 +622,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
             cmd.set(selector + " #PartyName.Text", party.getName());
 
-            PlayerRef leaderRef = Universe.get().getPlayer(party.getLeaderUuid());
-            String leaderName = leaderRef != null ? leaderRef.getUsername() : "Unknown";
+            String leaderName = Party.getPlayerName(party.getLeaderUuid());
             cmd.set(selector + " #PartyLeader.Text", "Leader: " + leaderName);
             cmd.set(selector + " #MemberCount.Text", party.getMemberCount() + "/" + party.getMaxMembers());
 
@@ -711,12 +701,9 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         // Build member list
         int index = 0;
         for (UUID memberUuid : party.getMemberUuids()) {
-            PlayerRef memberRef = Universe.get().getPlayer(memberUuid);
-            String name = memberRef != null ? memberRef.getUsername() : "Unknown";
-
-            boolean isOnline = memberRef != null;
-            String roleDisplay = party.getRoleDisplayName(memberUuid);
-            String status = isOnline ? roleDisplay : roleDisplay + " (Offline)";
+            String name = party.getMemberName(memberUuid);
+            String status = party.getMemberStatus(memberUuid);
+            boolean isOnline = Party.isPlayerOnline(memberUuid);
 
             String selector = "#PartyMembersList[" + index + "]";
             cmd.append("#PartyMembersList", "Components/PartyButton.ui");
@@ -808,9 +795,8 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
         cmd.set("#PlayerActionView.Visible", true);
 
-        PlayerRef selectedRef = Universe.get().getPlayer(selectedPlayerUuid);
-        String selectedName = selectedRef != null ? selectedRef.getUsername() : "Unknown";
-        boolean isOnline = selectedRef != null;
+        String selectedName = party.getMemberName(selectedPlayerUuid);
+        boolean isOnline = Party.isPlayerOnline(selectedPlayerUuid);
         PartyRole currentRole = party.getRole(selectedPlayerUuid);
         String roleDisplay = party.getRoleDisplayName(selectedPlayerUuid);
 
@@ -855,8 +841,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             Party party = partyManager.getPartyById(invite.getPartyId());
             String partyName = party != null ? party.getName() : "Unknown Party";
 
-            PlayerRef inviterRef = Universe.get().getPlayer(invite.getInviterUuid());
-            String inviterName = inviterRef != null ? inviterRef.getUsername() : "Unknown";
+            String inviterName = Party.getPlayerName(invite.getInviterUuid());
 
             cmd.set(selector + " #PartyName.Text", partyName);
             cmd.set(selector + " #InviterName.Text", "Invited by: " + inviterName);
@@ -897,8 +882,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             String selector = "#RequestsList[" + index + "]";
             cmd.append("#RequestsList", "Components/RequestEntryButton.ui");
 
-            PlayerRef requesterRef = Universe.get().getPlayer(request.getRequesterUuid());
-            String name = requesterRef != null ? requesterRef.getUsername() : "Unknown";
+            String name = Party.getPlayerName(request.getRequesterUuid());
             cmd.set(selector + " #RequesterName.Text", name);
 
             events.addEventBinding(CustomUIEventBindingType.Activating, selector + " #AcceptRequest",

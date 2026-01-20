@@ -1,0 +1,134 @@
+import org.gradle.internal.os.OperatingSystem
+
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '9.0.0-beta4'
+}
+
+version = '0.0.1'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+// OS-spezifische Pfade
+def hytaleServerJar
+def hytaleAssetsZip
+def singleplayerModsDir
+
+if (OperatingSystem.current().isWindows()) {
+    def appData = System.getenv('APPDATA')
+    hytaleServerJar = "${appData}/Hytale/install/release/package/game/latest/Server/HytaleServer.jar"
+    hytaleAssetsZip = "${appData}/Hytale/install/release/package/game/latest/Assets.zip"
+    singleplayerModsDir = file("${appData}/Hytale/UserData/Mods")
+} else if (OperatingSystem.current().isMacOsX()) {
+    def home = System.getProperty('user.home')
+    hytaleServerJar = "${home}/Library/Application Support/Hytale/install/release/package/game/latest/Server/HytaleServer.jar"
+    hytaleAssetsZip = "${home}/Library/Application Support/Hytale/install/release/package/game/latest/Assets.zip"
+    singleplayerModsDir = file("${home}/Library/Application Support/Hytale/UserData/Mods")
+} else {
+    // Linux fallback
+    def home = System.getProperty('user.home')
+    hytaleServerJar = "${home}/.hytale/install/release/package/game/latest/Server/HytaleServer.jar"
+    hytaleAssetsZip = "${home}/.hytale/install/release/package/game/latest/Assets.zip"
+    singleplayerModsDir = file("${home}/.hytale/UserData/Mods")
+}
+
+dependencies {
+    compileOnly files(hytaleServerJar)
+    compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
+    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
+}
+
+// Server läuft im Projekt unter /run
+def serverDir = file("${projectDir}/run")
+def serverModsDir = file("${serverDir}/mods")
+
+tasks.register('setupServer') {
+    doLast {
+        serverModsDir.mkdirs()
+
+        def serverJar = file("${serverDir}/HytaleServer.jar")
+        def assetsZip = file("${serverDir}/Assets.zip")
+
+        if (!serverJar.exists()) {
+            copy {
+                from hytaleServerJar
+                into serverDir
+            }
+        }
+        if (!assetsZip.exists()) {
+            copy {
+                from hytaleAssetsZip
+                into serverDir
+            }
+        }
+    }
+}
+
+tasks.register('copyPluginServer', Copy) {
+    dependsOn shadowJar, setupServer
+    from "build/libs/${project.name}-${version}-all.jar"
+    into serverModsDir
+    rename { "${project.name}-${version}.jar" }
+
+    // Immer neu kopieren
+    outputs.upToDateWhen { false }
+
+    // Alte JAR vorher löschen
+    doFirst {
+        delete fileTree(serverModsDir) { include "${project.name}*.jar" }
+    }
+}
+
+tasks.register('copyPluginSingleplayer', Copy) {
+    dependsOn shadowJar
+    from "build/libs/${project.name}-${version}-all.jar"
+    into singleplayerModsDir
+    rename { "${project.name}-${version}.jar" }
+}
+
+
+// Extrahiert das Asset-Pack aus der JAR
+tasks.register('extractAssets') {
+    dependsOn copyPluginServer
+    doLast {
+        def assetPackDir = file("${serverModsDir}/${project.name}")
+        assetPackDir.mkdirs()
+
+        // Extrahiere manifest.json, Server/ und Common/ (UI) aus der JAR
+        copy {
+            from zipTree("${serverModsDir}/${project.name}-${version}.jar")
+            into assetPackDir
+            include 'manifest.json'
+            include 'Server/**'
+            include 'Common/**'
+        }
+
+        // Passe manifest.json an (anderer Name als Plugin)
+        def manifestFile = file("${assetPackDir}/manifest.json")
+        if (manifestFile.exists()) {
+            manifestFile.text = """{
+  "Group": "${project.group}",
+  "Name": "${project.name}Assets",
+  "Version": "${version}"
+}
+"""
+        }
+    }
+}
+
+tasks.register('runServer', Exec) {
+    dependsOn clean, extractAssets
+    extractAssets.mustRunAfter clean
+
+    workingDir serverDir
+    commandLine 'java', '-jar', 'HytaleServer.jar', '--assets', 'Assets.zip', '--disable-sentry'
+    standardInput = System.in
+}

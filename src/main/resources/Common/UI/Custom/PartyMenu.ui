@@ -1,0 +1,895 @@
+$C = "Common.ui";
+
+@SectionTitleStyle = LabelStyle(
+    FontSize: 14,
+    TextColor: #778292,
+    RenderBold: true,
+    RenderUppercase: true,
+    VerticalAlignment: Center
+);
+
+@CountStyle = LabelStyle(
+    FontSize: 14,
+    TextColor: #96a9be,
+    RenderBold: true,
+    VerticalAlignment: Center
+);
+
+// Icon Tab Style
+@IconTabAnchor = Anchor(Width: 82, Height: 62, Right: 5, Bottom: -14);
+
+@IconTabStyle = TabStyleState(
+    Background: (TexturePath: "Icons/Tab.png", Border: 3),
+    Overlay: "Icons/TabOverlay.png",
+    IconAnchor: (Width: 44, Height: 44),
+    Anchor: @IconTabAnchor
+);
+
+@IconTabsStyle = TabNavigationStyle(
+    TabStyle: (
+        Default: @IconTabStyle,
+        Hovered: (...@IconTabStyle, Anchor: (...@IconTabAnchor, Bottom: -5)),
+        Pressed: (...@IconTabStyle, Anchor: (...@IconTabAnchor, Bottom: -8))
+    ),
+    SelectedTabStyle: (
+        Default: (
+            ...@IconTabStyle,
+            Anchor: (...@IconTabAnchor, Bottom: 0),
+            IconAnchor: (Width: 44, Height: 44),
+            Overlay: "Icons/TabSelectedOverlay.png"
+        )
+    )
+);
+
+@AccessButtonStyle = TextButtonStyle(
+    Default: (Background: (Color: #2a3a4a(0.6)), LabelStyle: (TextColor: #778292, FontSize: 12, RenderBold: true)),
+    Hovered: (Background: (Color: #3a4a5a), LabelStyle: (TextColor: #96a9be, FontSize: 12, RenderBold: true)),
+    Pressed: (Background: (Color: #1a2a3a), LabelStyle: (TextColor: #ccb588, FontSize: 12, RenderBold: true))
+);
+
+@AccessButtonSelectedStyle = TextButtonStyle(
+    Default: (Background: (Color: #1a4a3a), LabelStyle: (TextColor: #7ec87e, FontSize: 12, RenderBold: true)),
+    Hovered: (Background: (Color: #1a4a3a), LabelStyle: (TextColor: #7ec87e, FontSize: 12, RenderBold: true)),
+    Pressed: (Background: (Color: #1a4a3a), LabelStyle: (TextColor: #7ec87e, FontSize: 12, RenderBold: true))
+);
+
+$C.@PageOverlay {
+    LayoutMode: Middle;
+
+    Group {
+        LayoutMode: Top;
+        Anchor: (Width: 420);
+
+        // ===== TAB NAVIGATION (above the container) =====
+        TabNavigation #TabBar {
+            Anchor: (Height: 66, Left: 17, Right: 17);
+            Style: @IconTabsStyle;
+            SelectedTab: "Party";
+            Visible: false;
+
+            TabButton #PartyTab {
+                Id: "Party";
+                Icon: "Icons/PartyIcon.png";
+                TooltipText: "Party";
+            }
+
+            TabButton #SettingsTab {
+                Id: "Settings";
+                Icon: "Icons/SettingsIcon.png";
+                TooltipText: "Settings";
+                Visible: false;
+            }
+        }
+
+        $C.@DecoratedContainer {
+            @CloseButton = true;
+            Anchor: (Height: 560);
+
+            #Title {
+                $C.@Title {
+                    @Text = "Party";
+                }
+            }
+
+            #Content {
+                LayoutMode: Top;
+
+                // ===== PENDING INVITE SECTION =====
+            Group #InviteSection {
+                LayoutMode: Top;
+                Visible: false;
+                Background: (Color: #1a2633(0.8));
+                Padding: (Full: 12);
+                Anchor: (Bottom: 12);
+
+                Label {
+                    Text: "You have a party invite!";
+                    Style: (FontSize: 15, TextColor: #ccb588, RenderBold: true, HorizontalAlignment: Center);
+                    Anchor: (Bottom: 8);
+                }
+
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 40);
+
+                    $C.@TextButton #AcceptInvite {
+                        @Anchor = (Right: 6);
+                        Text: "Accept";
+                        FlexWeight: 1;
+                    }
+
+                    $C.@SecondaryTextButton #DeclineInvite {
+                        @Anchor = (Left: 6);
+                        Text: "Decline";
+                        FlexWeight: 1;
+                    }
+                }
+            }
+
+            // ===== NO PARTY VIEW (Start View) =====
+            Group #NoPartyView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Public Parties Header
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 24, Bottom: 8);
+
+                    Label {
+                        Text: "Available Parties";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+
+                    $C.@SmallSecondaryTextButton #RefreshListButton {
+                        @Text = "Refresh";
+                        Anchor: (Width: 100);
+                    }
+                }
+
+                // Public Parties Container
+                Group #PartiesContainer {
+                    LayoutMode: Top;
+                    FlexWeight: 1;
+
+                    // Empty state label (outside the list so it doesn't get cleared)
+                    Label #NoPartiesLabel {
+                        Text: "No parties available";
+                        Style: (FontSize: 14, TextColor: #778292(0.6), HorizontalAlignment: Center);
+                        Anchor: (Top: 40);
+                    }
+
+                    // Public Parties List
+                    Group #PublicPartiesList {
+                        LayoutMode: TopScrolling;
+                        ScrollbarStyle: (...$C.@DefaultScrollbarStyle, OnlyVisibleWhenHovered: true);
+                        Padding: (Left: 14);
+                        FlexWeight: 1;
+                    }
+                }
+
+                $C.@PanelSeparatorFancy {
+                    @Anchor = (Top: 8, Bottom: 8);
+                }
+
+                // Invites Button
+                $C.@SecondaryTextButton #ViewInvitesButton {
+                    Anchor: (Height: 44, Bottom: 8);
+                    Text: "Invites (0)";
+                }
+
+                // Create Party Button
+                $C.@TextButton #CreatePartyButton {
+                    Anchor: (Height: 48);
+                    Text: "Create Party";
+                }
+            }
+
+            // ===== CREATE PARTY VIEW =====
+            Group #CreatePartyView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Header with back button
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 32, Bottom: 12);
+
+                    $C.@SmallSecondaryTextButton #BackFromCreate {
+                        @Text = "Back";
+                        Anchor: (Width: 100, Right: 16);
+                    }
+
+                    Label {
+                        Text: "Create Party";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Party Name Input
+                Group {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 10);
+
+                    Label {
+                        Text: "Party Name";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 4);
+                    }
+
+                    $C.@TextField #PartyNameInput {
+                        @Anchor = (Height: 40);
+                    }
+                }
+
+                // Password Input
+                Group #CreatePasswordGroup {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 10);
+                    Visible: false;
+
+                    Label #CreatePasswordLabel {
+                        Text: "Password";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 4);
+                    }
+
+                    $C.@TextField #CreatePasswordInput {
+                        @Anchor = (Height: 40);
+                        PasswordChar: "*";
+                    }
+                }
+
+                // Access Type
+                Group {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 10);
+
+                    Label {
+                        Text: "Access Type";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 4);
+                    }
+
+                    Group {
+                        LayoutMode: Left;
+                        Anchor: (Height: 32);
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Right: 2);
+
+                            TextButton #CreateAccessOpen {
+                                Style: @AccessButtonStyle;
+                                Text: "Open";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #CreateAccessOpenCheck {
+                                Anchor: (Width: 14, Height: 14, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                            }
+                        }
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Horizontal: 2);
+
+                            TextButton #CreateAccessPassword {
+                                Style: @AccessButtonStyle;
+                                Text: "Password";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #CreateAccessPasswordCheck {
+                                Anchor: (Width: 14, Height: 14, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                                Visible: false;
+                            }
+                        }
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Horizontal: 2);
+
+                            TextButton #CreateAccessRequest {
+                                Style: @AccessButtonStyle;
+                                Text: "Invite";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #CreateAccessRequestCheck {
+                                Anchor: (Width: 14, Height: 14, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                                Visible: false;
+                            }
+                        }
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Left: 2);
+
+                            TextButton #CreateAccessLocked {
+                                Style: @AccessButtonStyle;
+                                Text: "Locked";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #CreateAccessLockedCheck {
+                                Anchor: (Width: 14, Height: 14, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                                Visible: false;
+                            }
+                        }
+                    }
+                }
+
+                // Max Members
+                Group {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 12);
+
+                    Label {
+                        Text: "Max Members";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 4);
+                    }
+
+                    Group {
+                        LayoutMode: Left;
+                        Anchor: (Height: 40);
+
+                        $C.@SmallSecondaryTextButton #CreateMaxMembersDecrease {
+                            @Text = "-";
+                            Anchor: (Width: 40);
+                        }
+
+                        Label #CreateMaxMembersValue {
+                            Text: "8";
+                            Style: (FontSize: 16, TextColor: #b7b8b9, HorizontalAlignment: Center, VerticalAlignment: Center);
+                            FlexWeight: 1;
+                        }
+
+                        $C.@SmallSecondaryTextButton #CreateMaxMembersIncrease {
+                            @Text = "+";
+                            Anchor: (Width: 40);
+                        }
+                    }
+                }
+
+                // Create Button
+                $C.@TextButton #ConfirmCreateButton {
+                    Anchor: (Height: 44);
+                    Text: "Create";
+                }
+            }
+
+            // ===== PARTY VIEW =====
+            Group #PartyView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Party Name Header
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 28, Bottom: 4);
+
+                    Label #PartyNameTitle {
+                        Text: "Party";
+                        Style: (FontSize: 16, TextColor: #ccb588, RenderBold: true, VerticalAlignment: Center);
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Party Members Header
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 24, Bottom: 8);
+
+                    Label {
+                        Text: "Members";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+
+                    Label #MemberCount {
+                        Text: "0/8";
+                        Style: @CountStyle;
+                    }
+                }
+
+                // Members List
+                Group #PartyMembersList {
+                    LayoutMode: TopScrolling;
+                    ScrollbarStyle: (...$C.@DefaultScrollbarStyle, OnlyVisibleWhenHovered: true);
+                    Padding: (Left: 14);
+                    FlexWeight: 1;
+                }
+
+                // Join Requests Button (leader only, REQUEST_ONLY parties)
+                $C.@SecondaryTextButton #ViewRequestsButton {
+                    Anchor: (Height: 36, Top: 8);
+                    Text: "Requests (0)";
+                    Visible: false;
+                }
+
+                $C.@PanelSeparatorFancy {
+                    @Anchor = (Top: 12, Bottom: 12);
+                }
+
+                // Action Buttons
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 44);
+
+                    $C.@TextButton #InvitePlayerButton {
+                        @Anchor = (Right: 6);
+                        Text: "Invite";
+                        FlexWeight: 1;
+                    }
+
+                    $C.@CancelTextButton #LeavePartyButton {
+                        @Anchor = (Left: 6);
+                        Text: "Leave";
+                        FlexWeight: 1;
+                    }
+                }
+            }
+
+            // ===== SETTINGS VIEW =====
+            Group #SettingsView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Party Name
+                Group {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 12);
+
+                    Label {
+                        Text: "Party Name";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 6);
+                    }
+
+                    $C.@TextField #SettingsNameInput {
+                        @Anchor = (Height: 44);
+                    }
+                }
+
+                // Password
+                Group #SettingsPasswordGroup {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 12);
+                    Visible: false;
+
+                    Label #SettingsPasswordLabel {
+                        Text: "Password";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 6);
+                    }
+
+                    $C.@TextField #SettingsPasswordInput {
+                        @Anchor = (Height: 44);
+                        PasswordChar: "*";
+                    }
+                }
+
+                // Access Type
+                Group {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 12);
+
+                    Label {
+                        Text: "Access Type";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 6);
+                    }
+
+                    Group {
+                        LayoutMode: Left;
+                        Anchor: (Height: 36);
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Right: 2);
+
+                            TextButton #AccessOpen {
+                                Style: @AccessButtonStyle;
+                                Text: "Open";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #AccessOpenCheck {
+                                Anchor: (Width: 16, Height: 16, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                                Visible: false;
+                            }
+                        }
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Horizontal: 2);
+
+                            TextButton #AccessPassword {
+                                Style: @AccessButtonStyle;
+                                Text: "Password";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #AccessPasswordCheck {
+                                Anchor: (Width: 16, Height: 16, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                                Visible: false;
+                            }
+                        }
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Horizontal: 2);
+
+                            TextButton #AccessRequest {
+                                Style: @AccessButtonStyle;
+                                Text: "Invite";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #AccessRequestCheck {
+                                Anchor: (Width: 16, Height: 16, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                                Visible: false;
+                            }
+                        }
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Left: 2);
+
+                            TextButton #AccessLocked {
+                                Style: @AccessButtonStyle;
+                                Text: "Locked";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #AccessLockedCheck {
+                                Anchor: (Width: 16, Height: 16, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                                Visible: false;
+                            }
+                        }
+                    }
+                }
+
+                // Max Members
+                Group {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 16);
+
+                    Label {
+                        Text: "Max Members";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 6);
+                    }
+
+                    Group {
+                        LayoutMode: Left;
+                        Anchor: (Height: 44);
+
+                        $C.@SmallSecondaryTextButton #MaxMembersDecrease {
+                            @Text = "-";
+                            Anchor: (Width: 44);
+                        }
+
+                        Label #MaxMembersValue {
+                            Text: "8";
+                            Style: (FontSize: 18, TextColor: #b7b8b9, HorizontalAlignment: Center, VerticalAlignment: Center);
+                            FlexWeight: 1;
+                        }
+
+                        $C.@SmallSecondaryTextButton #MaxMembersIncrease {
+                            @Text = "+";
+                            Anchor: (Width: 44);
+                        }
+                    }
+                }
+
+                // Spacer
+                Group { FlexWeight: 1; }
+
+                // Save Button
+                $C.@TextButton #SaveSettingsButton {
+                    Anchor: (Height: 44, Bottom: 8);
+                    Text: "Save Changes";
+                }
+
+                // Disband Button
+                $C.@CancelTextButton #DisbandButton {
+                    Anchor: (Height: 40);
+                    Text: "Disband Party";
+                }
+            }
+
+            // ===== INVITE PLAYERS VIEW =====
+            Group #InvitePlayersView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Header with back button
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 32, Bottom: 8);
+
+                    $C.@SmallSecondaryTextButton #BackToPartyButton {
+                        @Text = "Back";
+                        Anchor: (Width: 100, Right: 16);
+                    }
+
+                    Label {
+                        Text: "Invite Players";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Players List
+                Group #PlayersList {
+                    LayoutMode: TopScrolling;
+                    ScrollbarStyle: (...$C.@DefaultScrollbarStyle, OnlyVisibleWhenHovered: true);
+                    Padding: (Left: 14);
+                    FlexWeight: 1;
+                }
+            }
+
+            // ===== PASSWORD ENTRY VIEW =====
+            Group #PasswordEntryView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Header with back button
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 32, Bottom: 16);
+
+                    $C.@SmallSecondaryTextButton #BackFromPassword {
+                        @Text = "Back";
+                        Anchor: (Width: 100, Right: 16);
+                    }
+
+                    Label #PasswordPartyName {
+                        Text: "Join Party";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+                }
+
+                Group {
+                    LayoutMode: Middle;
+                    FlexWeight: 1;
+
+                    Group {
+                        LayoutMode: Top;
+                        Anchor: (Width: 280);
+
+                        Label {
+                            Text: "This party requires a password";
+                            Style: (FontSize: 14, TextColor: #96a9be, HorizontalAlignment: Center);
+                            Anchor: (Bottom: 16);
+                        }
+
+                        $C.@TextField #PasswordInput {
+                            @Anchor = (Height: 44, Bottom: 16);
+                            PasswordChar: "*";
+                        }
+
+                        $C.@TextButton #JoinWithPasswordButton {
+                            Anchor: (Height: 48);
+                            Text: "Join";
+                        }
+                    }
+                }
+            }
+
+            // ===== INVITES LIST VIEW =====
+            Group #InvitesListView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Header with back button
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 32, Bottom: 8);
+
+                    $C.@SmallSecondaryTextButton #BackFromInvites {
+                        @Text = "Back";
+                        Anchor: (Width: 100, Right: 16);
+                    }
+
+                    Label {
+                        Text: "Your Invites";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Invites List
+                Group #InvitesList {
+                    LayoutMode: TopScrolling;
+                    ScrollbarStyle: (...$C.@DefaultScrollbarStyle, OnlyVisibleWhenHovered: true);
+                    Padding: (Left: 14);
+                    FlexWeight: 1;
+                }
+            }
+
+            // ===== JOIN REQUESTS VIEW (Leader only) =====
+            Group #JoinRequestsView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Header with back button
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 32, Bottom: 8);
+
+                    $C.@SmallSecondaryTextButton #BackFromRequests {
+                        @Text = "Back";
+                        Anchor: (Width: 100, Right: 16);
+                    }
+
+                    Label {
+                        Text: "Join Requests";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Requests List
+                Group #RequestsList {
+                    LayoutMode: TopScrolling;
+                    ScrollbarStyle: (...$C.@DefaultScrollbarStyle, OnlyVisibleWhenHovered: true);
+                    Padding: (Left: 14);
+                    FlexWeight: 1;
+                }
+            }
+
+            // ===== PLAYER ACTION VIEW =====
+            Group #PlayerActionView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Header with back button and player name
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 32, Bottom: 16);
+
+                    $C.@SmallSecondaryTextButton #BackToPartyFromAction {
+                        @Text = "Back";
+                        Anchor: (Width: 100, Right: 16);
+                    }
+
+                    Label #SelectedPlayerName {
+                        Text: "Player";
+                        Style: @SectionTitleStyle;
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Player info box
+                Group {
+                    Background: (TexturePath: "Icons/ObjectivePanelContainer.png", Border: 15);
+                    Anchor: (Height: 60, Bottom: 16);
+                    Padding: (Horizontal: 16, Vertical: 12);
+                    LayoutMode: Left;
+
+                    Group #SelectedPlayerBadge {
+                        Anchor: (Width: 16, Height: 16, Left: 4);
+                        Background: (TexturePath: "Icons/SameWorld.png");
+                    }
+
+                    Label #SelectedPlayerRole {
+                        Text: "Member";
+                        Style: (FontSize: 15, TextColor: #96a9be, VerticalAlignment: Center);
+                        Anchor: (Left: 12);
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Action buttons
+                Group {
+                    LayoutMode: Top;
+                    FlexWeight: 1;
+
+                    // Promote button
+                    $C.@TextButton #PromoteButton {
+                        Anchor: (Height: 48, Bottom: 8);
+                        Text: "Promote to Moderator";
+                    }
+
+                    // Demote button
+                    $C.@SecondaryTextButton #DemoteButton {
+                        Anchor: (Height: 48, Bottom: 8);
+                        Text: "Demote to Member";
+                    }
+
+                    // Kick button
+                    $C.@CancelTextButton #KickPlayerButton {
+                        Anchor: (Height: 48, Bottom: 16);
+                        Text: "Kick from Party";
+                    }
+
+                    // Transfer leadership button (leader only)
+                    $C.@TextButton #TransferLeadershipButton {
+                        Anchor: (Height: 48);
+                        Text: "Make Party Leader";
+                    }
+                }
+            }
+
+            // ===== CONFIRMATION VIEW =====
+            Group #ConfirmView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                Group {
+                    LayoutMode: Middle;
+                    FlexWeight: 1;
+
+                    Group {
+                        LayoutMode: Top;
+                        Anchor: (Width: 300);
+
+                        Label #ConfirmTitle {
+                            Text: "Confirm";
+                            Style: (
+                                FontSize: 20,
+                                TextColor: #ccb588,
+                                RenderBold: true,
+                                HorizontalAlignment: Center
+                            );
+                            Anchor: (Bottom: 12);
+                        }
+
+                        Label #ConfirmMessage {
+                            Text: "Are you sure?";
+                            Style: (
+                                FontSize: 15,
+                                TextColor: #96a9be,
+                                HorizontalAlignment: Center
+                            );
+                            Anchor: (Bottom: 24);
+                        }
+
+                        Group {
+                            LayoutMode: Left;
+                            Anchor: (Height: 48);
+
+                            $C.@SecondaryTextButton #CancelConfirmButton {
+                                @Anchor = (Right: 6);
+                                Text: "Cancel";
+                                FlexWeight: 1;
+                            }
+
+                            $C.@CancelTextButton #ConfirmActionButton {
+                                @Anchor = (Left: 6);
+                                Text: "Confirm";
+                                FlexWeight: 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+    }
+}

@@ -18,7 +18,10 @@
       "Bash(unzip:*)",
       "Bash(javap:*)",
       "Bash(xargs ls:*)",
-      "WebFetch(domain:hytalemodding.dev)"
+      "WebFetch(domain:hytalemodding.dev)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.curseforge.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   },
   "outputStyle": "Explanatory"

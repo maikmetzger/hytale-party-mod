@@ -5,6 +5,7 @@ import com.gaukh.partymod.party.FakeMember;
 import com.gaukh.partymod.party.Party;
 import com.gaukh.partymod.party.PartyInvite;
 import com.gaukh.partymod.party.PartyManager;
+import com.gaukh.partymod.party.PartyPlayerListHud;
 import com.gaukh.partymod.pages.PartyMenuPage;
 import it.unimi.dsi.fastutil.Pair;
 import com.hypixel.hytale.component.Ref;
@@ -357,11 +358,18 @@ public class PartyCommand extends AbstractPlayerCommand {
                              @Nonnull PlayerRef playerRef,
                              @Nonnull UUID playerUuid,
                              @Nonnull String[] parts) {
+        // Only allow operators to use debug commands (check for wildcard permission)
+        if (!context.sender().hasPermission("*")) {
+            context.sendMessage(Message.raw("You must be an operator to use debug commands."));
+            return;
+        }
+
         String debugAction = parts.length > 2 ? parts[2].toLowerCase() : "help";
 
         switch (debugAction) {
             case "addbot" -> handleDebugAddBot(context, store, ref, playerRef, playerUuid);
             case "removebot", "removebots" -> handleDebugRemoveBots(context, store, playerUuid);
+            case "hud" -> handleDebugHud(context, parts);
             default -> showDebugUsage(context);
         }
     }
@@ -370,8 +378,39 @@ public class PartyCommand extends AbstractPlayerCommand {
         context.sendMessage(Message.raw(
                 "Debug Commands:\n" +
                 "/party debug addbot - Add a fake party member (for testing compass markers)\n" +
-                "/party debug removebot - Remove all fake party members"
+                "/party debug removebot - Remove all fake party members\n" +
+                "/party debug hud min <1|2> - Set minimum members for HUD visibility"
         ));
+    }
+
+    private void handleDebugHud(@Nonnull CommandContext context, @Nonnull String[] parts) {
+        if (parts.length < 4) {
+            context.sendMessage(Message.raw("Usage: /party debug hud min <1|2>"));
+            context.sendMessage(Message.raw("Current minimum: " + PartyPlayerListHud.getMinMembersForHud()));
+            return;
+        }
+
+        String subCommand = parts[3].toLowerCase();
+        if ("min".equals(subCommand)) {
+            if (parts.length < 5) {
+                context.sendMessage(Message.raw("Current HUD minimum members: " + PartyPlayerListHud.getMinMembersForHud()));
+                return;
+            }
+
+            try {
+                int minMembers = Integer.parseInt(parts[4]);
+                if (minMembers < 1) {
+                    context.sendMessage(Message.raw("Minimum must be at least 1."));
+                    return;
+                }
+                PartyPlayerListHud.setMinMembersForHud(minMembers);
+                context.sendMessage(Message.raw("HUD minimum members set to " + minMembers + "."));
+            } catch (NumberFormatException e) {
+                context.sendMessage(Message.raw("Invalid number. Usage: /party debug hud min <1|2>"));
+            }
+        } else {
+            context.sendMessage(Message.raw("Usage: /party debug hud min <1|2>"));
+        }
     }
 
     private void handleDebugAddBot(@Nonnull CommandContext context,

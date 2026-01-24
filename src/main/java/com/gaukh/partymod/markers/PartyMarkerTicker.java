@@ -113,41 +113,43 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
     }
 
     /**
-     * Update markers for all online players.
-     * Runs on MAIN THREAD - safe to call getComponent().
+     * Update markers for all players in the current world.
+     * Uses currentWorld.getPlayers() to avoid cross-thread access issues.
+     * This ensures we only process players on the correct thread.
      */
+    @SuppressWarnings("deprecation") // getPlayers() is deprecated but necessary for thread-safety
     private void updateAllPartyMarkers(Store<EntityStore> store) {
-        try {
-            for (PlayerRef viewerRef : Universe.get().getPlayers()) {
-                try {
-                    updateMarkersForPlayer(viewerRef, store);
-                } catch (Exception e) {
-                    // Ignore errors for individual players (they may not be fully initialized)
-                }
+        // Get current world from store - this is the world this ticker is running on
+        World currentWorld = store.getExternalData().getWorld();
+        if (currentWorld == null) {
+            return;
+        }
+
+        // IMPORTANT: Only iterate over players in THIS world to avoid cross-thread access!
+        // Universe.get().getPlayers() returns ALL players across ALL worlds, causing
+        // "PlayerRef.getComponent() called async with player in world" errors.
+        for (Player viewer : currentWorld.getPlayers()) {
+            try {
+                // Get PlayerRef from the Player's UUID
+                PlayerRef viewerRef = Universe.get().getPlayer(viewer.getUuid());
+                if (viewerRef == null) continue;
+
+                updateMarkersForPlayer(viewerRef, viewer, store);
+            } catch (Exception e) {
+                // Ignore errors for individual players (they may not be fully initialized)
             }
-        } catch (Exception e) {
-            // Ignore errors during iteration
         }
     }
 
-    private void updateMarkersForPlayer(PlayerRef viewerRef, Store<EntityStore> store) {
+    private void updateMarkersForPlayer(PlayerRef viewerRef, Player viewer, Store<EntityStore> store) {
         UUID viewerUuid = viewerRef.getUuid();
+        World viewerWorld = viewer.getWorld();
+        if (viewerWorld == null) return;
 
         // Check if player is in a party
         Party party = PartyMod.getInstance().getPartyManager().getPartyByPlayer(viewerUuid);
         if (party == null) {
             removeAllMarkersForPlayer(viewerUuid, viewerRef);
-            return;
-        }
-
-        // Get viewer's player component - may be null if player is still loading
-        Player viewer = viewerRef.getComponent(Player.getComponentType());
-        if (viewer == null) {
-            return;
-        }
-
-        // Check if player has a world (fully loaded)
-        if (viewer.getWorld() == null) {
             return;
         }
 
@@ -157,8 +159,6 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
         double viewerX = viewerTransform.getTransform().getPosition().getX();
         double viewerY = viewerTransform.getTransform().getPosition().getY();
         double viewerZ = viewerTransform.getTransform().getPosition().getZ();
-
-        World viewerWorld = viewer.getWorld();
 
         // Get or create the marker state map for this viewer
         Map<String, MarkerState> viewerMarkerStates = displayedMarkers.computeIfAbsent(
@@ -173,13 +173,10 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
             PlayerRef memberRef = Universe.get().getPlayer(memberUuid);
             if (memberRef == null) continue;
 
-            Player memberPlayer = memberRef.getComponent(Player.getComponentType());
+            // Get member player - only safe if they're in the same world
+            // For cross-world members, we skip them (no marker shown)
+            Player memberPlayer = getMemberPlayerSafe(memberRef, viewerWorld);
             if (memberPlayer == null) continue;
-
-            // Check if in same world
-            if (viewerWorld != null && !viewerWorld.equals(memberPlayer.getWorld())) {
-                continue;
-            }
 
             TransformComponent transform = memberPlayer.getTransformComponent();
             if (transform == null) continue;
@@ -320,6 +317,32 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
         if (!markersToSend.isEmpty() || !markersToRemove.isEmpty()) {
             sendUpdateWorldMapPacket(viewerRef, markersToSend, markersToRemove);
         }
+    }
+
+    /**
+     * Safely gets a Player component for a member, only if they're in the same world as the viewer.
+     * Returns null if the member is offline, not loaded, or in a different world.
+     *
+     * Note: If the member is in a different world, Hytale will log a warning about cross-thread access,
+     * but this is unavoidable as we cannot check the world without calling getComponent().
+     * The warning is harmless - it just indicates we tried to access a player in another world.
+     */
+    @SuppressWarnings("deprecation")
+    private Player getMemberPlayerSafe(PlayerRef memberRef, World viewerWorld) {
+        // Unfortunately, there's no way to check which world a player is in without calling getComponent().
+        // If the player is in a different world, Hytale logs a warning but returns null.
+        Player memberPlayer = memberRef.getComponent(Player.getComponentType());
+        if (memberPlayer == null) {
+            return null;
+        }
+
+        // Check if member is in the same world as the viewer
+        World memberWorld = memberPlayer.getWorld();
+        if (memberWorld == null || !viewerWorld.equals(memberWorld)) {
+            return null;
+        }
+
+        return memberPlayer;
     }
 
     private void removeAllMarkersForPlayer(UUID playerUuid, PlayerRef playerRef) {

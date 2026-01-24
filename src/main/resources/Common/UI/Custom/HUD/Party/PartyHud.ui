@@ -1,0 +1,433 @@
+// Party Member HUD - displays party member names, distance, and health
+Group #PartyHudRoot {
+    LayoutMode: Top;
+
+    // Main container positioned at top-left
+    Group #MemberListContainer {
+        Anchor: (Top: 35, Left: 20, Width: 200, Height: 360);
+        LayoutMode: Top;
+        Padding: (Full: 5);
+
+        // Header with PopupTitle background
+        Group #PartyHeaderContainer {
+            Anchor: (Height: 25, Bottom: 8);
+            Background: (TexturePath: "../../Common/PopupTitle.png", Border: 8);
+
+            Label #PartyHeader {
+                Text: "Party Members";
+                Style: (FontSize: 12, TextColor: #b4c8c9, RenderBold: true, RenderUppercase: true, FontName: "Secondary", HorizontalAlignment: Center, VerticalAlignment: Center);
+            }
+        }
+
+        // Member slot 0 (you/leader - green name)
+        Group #Member0 {
+            Visible: false;
+            Anchor: (Height: 52);
+            Background: (TexturePath: "../../Common/ContainerBackgroundSecondary.png", Border: 4);
+            Padding: (Full: 6);
+            LayoutMode: Top;
+
+            // Row 1: Name + Distance
+            Group #Member0Row1 {
+                Anchor: (Height: 16);
+                LayoutMode: Left;
+
+                Label #Member0Name {
+                    FlexWeight: 1;
+                    Style: (FontSize: 12, TextColor: #f1ca71, RenderBold: true);
+                    Text: "";
+                }
+                Label #Member0Distance {
+                    Anchor: (Width: 50);
+                    Style: (FontSize: 10, TextColor: #aaaaaa, HorizontalAlignment: End);
+                    Text: "";
+                }
+            }
+
+            // Row 2: Health Bar
+            Group #Member0HealthBg {
+                Background: "../../Icons/PartyHealthBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member0Health {
+                    BarTexturePath: "../../Icons/PartyHealthBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyHealthBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+
+            // Row 3: Stamina Bar
+            Group #Member0StaminaBg {
+                Background: "../../Icons/PartyStaminaBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member0Stamina {
+                    BarTexturePath: "../../Icons/PartyStaminaBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyStaminaBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+        }
+
+        // Member slot 1
+        Group #Member1 {
+            Visible: false;
+            Anchor: (Height: 52);
+            Background: (TexturePath: "../../Common/ContainerBackgroundSecondary.png", Border: 4);
+            Padding: (Full: 6);
+            LayoutMode: Top;
+
+            Group #Member1Row1 {
+                Anchor: (Height: 16);
+                LayoutMode: Left;
+
+                Label #Member1Name {
+                    FlexWeight: 1;
+                    Style: (FontSize: 12, TextColor: #f1ca71, RenderBold: true);
+                    Text: "";
+                }
+                Label #Member1Distance {
+                    Anchor: (Width: 50);
+                    Style: (FontSize: 10, TextColor: #aaaaaa, HorizontalAlignment: End);
+                    Text: "";
+                }
+            }
+
+            Group #Member1HealthBg {
+                Background: "../../Icons/PartyHealthBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member1Health {
+                    BarTexturePath: "../../Icons/PartyHealthBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyHealthBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+
+            Group #Member1StaminaBg {
+                Background: "../../Icons/PartyStaminaBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member1Stamina {
+                    BarTexturePath: "../../Icons/PartyStaminaBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyStaminaBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+        }
+
+        // Member slot 2
+        Group #Member2 {
+            Visible: false;
+            Anchor: (Height: 52);
+            Background: (TexturePath: "../../Common/ContainerBackgroundSecondary.png", Border: 4);
+            Padding: (Full: 6);
+            LayoutMode: Top;
+
+            Group #Member2Row1 {
+                Anchor: (Height: 16);
+                LayoutMode: Left;
+
+                Label #Member2Name {
+                    FlexWeight: 1;
+                    Style: (FontSize: 12, TextColor: #f1ca71, RenderBold: true);
+                    Text: "";
+                }
+                Label #Member2Distance {
+                    Anchor: (Width: 50);
+                    Style: (FontSize: 10, TextColor: #aaaaaa, HorizontalAlignment: End);
+                    Text: "";
+                }
+            }
+
+            Group #Member2HealthBg {
+                Background: "../../Icons/PartyHealthBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member2Health {
+                    BarTexturePath: "../../Icons/PartyHealthBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyHealthBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+
+            Group #Member2StaminaBg {
+                Background: "../../Icons/PartyStaminaBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member2Stamina {
+                    BarTexturePath: "../../Icons/PartyStaminaBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyStaminaBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+        }
+
+        // Member slot 3
+        Group #Member3 {
+            Visible: false;
+            Anchor: (Height: 52);
+            Background: (TexturePath: "../../Common/ContainerBackgroundSecondary.png", Border: 4);
+            Padding: (Full: 6);
+            LayoutMode: Top;
+
+            Group #Member3Row1 {
+                Anchor: (Height: 16);
+                LayoutMode: Left;
+
+                Label #Member3Name {
+                    FlexWeight: 1;
+                    Style: (FontSize: 12, TextColor: #f1ca71, RenderBold: true);
+                    Text: "";
+                }
+                Label #Member3Distance {
+                    Anchor: (Width: 50);
+                    Style: (FontSize: 10, TextColor: #aaaaaa, HorizontalAlignment: End);
+                    Text: "";
+                }
+            }
+
+            Group #Member3HealthBg {
+                Background: "../../Icons/PartyHealthBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member3Health {
+                    BarTexturePath: "../../Icons/PartyHealthBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyHealthBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+
+            Group #Member3StaminaBg {
+                Background: "../../Icons/PartyStaminaBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member3Stamina {
+                    BarTexturePath: "../../Icons/PartyStaminaBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyStaminaBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+        }
+
+        // Member slot 4
+        Group #Member4 {
+            Visible: false;
+            Anchor: (Height: 52);
+            Background: (TexturePath: "../../Common/ContainerBackgroundSecondary.png", Border: 4);
+            Padding: (Full: 6);
+            LayoutMode: Top;
+
+            Group #Member4Row1 {
+                Anchor: (Height: 16);
+                LayoutMode: Left;
+
+                Label #Member4Name {
+                    FlexWeight: 1;
+                    Style: (FontSize: 12, TextColor: #f1ca71, RenderBold: true);
+                    Text: "";
+                }
+                Label #Member4Distance {
+                    Anchor: (Width: 50);
+                    Style: (FontSize: 10, TextColor: #aaaaaa, HorizontalAlignment: End);
+                    Text: "";
+                }
+            }
+
+            Group #Member4HealthBg {
+                Background: "../../Icons/PartyHealthBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member4Health {
+                    BarTexturePath: "../../Icons/PartyHealthBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyHealthBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+
+            Group #Member4StaminaBg {
+                Background: "../../Icons/PartyStaminaBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member4Stamina {
+                    BarTexturePath: "../../Icons/PartyStaminaBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyStaminaBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+        }
+
+        // Member slot 5
+        Group #Member5 {
+            Visible: false;
+            Anchor: (Height: 52);
+            Background: (TexturePath: "../../Common/ContainerBackgroundSecondary.png", Border: 4);
+            Padding: (Full: 6);
+            LayoutMode: Top;
+
+            Group #Member5Row1 {
+                Anchor: (Height: 16);
+                LayoutMode: Left;
+
+                Label #Member5Name {
+                    FlexWeight: 1;
+                    Style: (FontSize: 12, TextColor: #f1ca71, RenderBold: true);
+                    Text: "";
+                }
+                Label #Member5Distance {
+                    Anchor: (Width: 50);
+                    Style: (FontSize: 10, TextColor: #aaaaaa, HorizontalAlignment: End);
+                    Text: "";
+                }
+            }
+
+            Group #Member5HealthBg {
+                Background: "../../Icons/PartyHealthBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member5Health {
+                    BarTexturePath: "../../Icons/PartyHealthBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyHealthBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+
+            Group #Member5StaminaBg {
+                Background: "../../Icons/PartyStaminaBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member5Stamina {
+                    BarTexturePath: "../../Icons/PartyStaminaBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyStaminaBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+        }
+
+        // Member slot 6
+        Group #Member6 {
+            Visible: false;
+            Anchor: (Height: 52);
+            Background: (TexturePath: "../../Common/ContainerBackgroundSecondary.png", Border: 4);
+            Padding: (Full: 6);
+            LayoutMode: Top;
+
+            Group #Member6Row1 {
+                Anchor: (Height: 16);
+                LayoutMode: Left;
+
+                Label #Member6Name {
+                    FlexWeight: 1;
+                    Style: (FontSize: 12, TextColor: #f1ca71, RenderBold: true);
+                    Text: "";
+                }
+                Label #Member6Distance {
+                    Anchor: (Width: 50);
+                    Style: (FontSize: 10, TextColor: #aaaaaa, HorizontalAlignment: End);
+                    Text: "";
+                }
+            }
+
+            Group #Member6HealthBg {
+                Background: "../../Icons/PartyHealthBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member6Health {
+                    BarTexturePath: "../../Icons/PartyHealthBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyHealthBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+
+            Group #Member6StaminaBg {
+                Background: "../../Icons/PartyStaminaBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member6Stamina {
+                    BarTexturePath: "../../Icons/PartyStaminaBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyStaminaBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+        }
+
+        // Member slot 7
+        Group #Member7 {
+            Visible: false;
+            Anchor: (Height: 52);
+            Background: (TexturePath: "../../Common/ContainerBackgroundSecondary.png", Border: 4);
+            Padding: (Full: 6);
+            LayoutMode: Top;
+
+            Group #Member7Row1 {
+                Anchor: (Height: 16);
+                LayoutMode: Left;
+
+                Label #Member7Name {
+                    FlexWeight: 1;
+                    Style: (FontSize: 12, TextColor: #f1ca71, RenderBold: true);
+                    Text: "";
+                }
+                Label #Member7Distance {
+                    Anchor: (Width: 50);
+                    Style: (FontSize: 10, TextColor: #aaaaaa, HorizontalAlignment: End);
+                    Text: "";
+                }
+            }
+
+            Group #Member7HealthBg {
+                Background: "../../Icons/PartyHealthBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member7Health {
+                    BarTexturePath: "../../Icons/PartyHealthBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyHealthBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+
+            Group #Member7StaminaBg {
+                Background: "../../Icons/PartyStaminaBar.png";
+                Anchor: (Height: 10, Top: 2);
+
+                ProgressBar #Member7Stamina {
+                    BarTexturePath: "../../Icons/PartyStaminaBarFill.png";
+                    EffectTexturePath: "../../Icons/PartyStaminaBarEffect.png";
+                    EffectWidth: 102;
+                    EffectHeight: 60;
+                    EffectOffset: 74;
+                }
+            }
+        }
+    }
+}

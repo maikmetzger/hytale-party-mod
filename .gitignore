@@ -19,6 +19,6 @@ server.log
 Thumbs.db
 
 HytaleServer
-
-# Claude
-.claude/
+/nul
+.claude
+CLAUDE.md

@@ -61,23 +61,42 @@ $C.@PageOverlay {
         Anchor: (Width: 420);
 
         // ===== TAB NAVIGATION (above the container) =====
-        TabNavigation #TabBar {
+        Group #TabBarContainer {
+            LayoutMode: Left;
             Anchor: (Height: 66, Left: 17, Right: 17);
-            Style: @IconTabsStyle;
-            SelectedTab: "Party";
             Visible: false;
 
-            TabButton #PartyTab {
-                Id: "Party";
-                Icon: "Icons/PartyIcon.png";
-                TooltipText: "Party";
+            // Left tabs (Party + My Settings)
+            TabNavigation #LeftTabBar {
+                Style: @IconTabsStyle;
+                SelectedTab: "Party";
+
+                TabButton #PartyTab {
+                    Id: "Party";
+                    Icon: "Icons/PartyIcon.png";
+                    TooltipText: "Party";
+                }
+
+                TabButton #MySettingsTab {
+                    Id: "MySettings";
+                    Icon: "Icons/PlayerSettingsIcon.png";
+                    TooltipText: "My Settings";
+                }
             }
 
-            TabButton #SettingsTab {
-                Id: "Settings";
-                Icon: "Icons/SettingsIcon.png";
-                TooltipText: "Settings";
+            // Spacer between left and right tabs
+            Group { FlexWeight: 1; }
+
+            // Right tab (Leader Settings - only visible for leaders)
+            TabNavigation #RightTabBar {
+                Style: @IconTabsStyle;
                 Visible: false;
+
+                TabButton #LeaderSettingsTab {
+                    Id: "LeaderSettings";
+                    Icon: "Icons/SettingsIcon.png";
+                    TooltipText: "Party Settings";
+                }
             }
         }
 
@@ -612,6 +631,181 @@ $C.@PageOverlay {
                 $C.@CancelTextButton #DisbandButton {
                     Anchor: (Height: 40);
                     Text: "Disband Party";
+                }
+            }
+
+            // ===== MY SETTINGS VIEW (Player HUD Settings) =====
+            Group #MySettingsView {
+                LayoutMode: Top;
+                FlexWeight: 1;
+                Visible: false;
+
+                // Section Header: HUD
+                Label {
+                    Text: "HUD SETTINGS";
+                    Style: @SectionTitleStyle;
+                    Anchor: (Bottom: 16);
+                }
+
+                // Show Party HUD Toggle
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 40, Bottom: 8);
+
+                    Label {
+                        Text: "Show Party HUD";
+                        Style: (FontSize: 14, TextColor: #b7b8b9, VerticalAlignment: Center);
+                        FlexWeight: 1;
+                    }
+
+                    Group {
+                        Anchor: (Width: 80);
+
+                        TextButton #ShowHudToggle {
+                            Style: @AccessButtonStyle;
+                            Text: "Enabled";
+                            Anchor: (Full: 0);
+                        }
+
+                        Group #ShowHudCheck {
+                            Anchor: (Width: 16, Height: 16, Right: 4);
+                            Background: (TexturePath: "Icons/Checkmark.png");
+                        }
+                    }
+                }
+
+                // Show myself in HUD Toggle
+                Group {
+                    LayoutMode: Left;
+                    Anchor: (Height: 40, Bottom: 8);
+
+                    Label {
+                        Text: "Show myself in HUD";
+                        Style: (FontSize: 14, TextColor: #b7b8b9, VerticalAlignment: Center);
+                        FlexWeight: 1;
+                    }
+
+                    Group {
+                        Anchor: (Width: 80);
+
+                        TextButton #ShowSelfToggle {
+                            Style: @AccessButtonStyle;
+                            Text: "Enabled";
+                            Anchor: (Full: 0);
+                        }
+
+                        Group #ShowSelfCheck {
+                            Anchor: (Width: 16, Height: 16, Right: 4);
+                            Background: (TexturePath: "Icons/Checkmark.png");
+                        }
+                    }
+                }
+
+                // Max Players to show (1-8)
+                Group {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 12);
+
+                    Label {
+                        Text: "Players to show";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 6);
+                    }
+
+                    Group {
+                        LayoutMode: Left;
+                        Anchor: (Height: 44);
+
+                        $C.@SmallSecondaryTextButton #HudMaxDecrease {
+                            @Text = "-";
+                            Anchor: (Width: 44);
+                        }
+
+                        Label #HudMaxValue {
+                            Text: "8";
+                            Style: (FontSize: 18, TextColor: #b7b8b9, HorizontalAlignment: Center, VerticalAlignment: Center);
+                            FlexWeight: 1;
+                        }
+
+                        $C.@SmallSecondaryTextButton #HudMaxIncrease {
+                            @Text = "+";
+                            Anchor: (Width: 44);
+                        }
+                    }
+                }
+
+                // Member Order Mode
+                Group {
+                    LayoutMode: Top;
+                    Anchor: (Bottom: 12);
+
+                    Label {
+                        Text: "Member Order";
+                        Style: (FontSize: 13, TextColor: #778292, RenderBold: true);
+                        Anchor: (Bottom: 6);
+                    }
+
+                    Group {
+                        LayoutMode: Left;
+                        Anchor: (Height: 36);
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Right: 4);
+
+                            TextButton #OrderFixed {
+                                Style: @AccessButtonStyle;
+                                Text: "Join Order";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #OrderFixedCheck {
+                                Anchor: (Width: 16, Height: 16, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                            }
+                        }
+
+                        Group {
+                            FlexWeight: 1;
+                            Anchor: (Left: 4);
+
+                            TextButton #OrderDistance {
+                                Style: @AccessButtonStyle;
+                                Text: "Distance";
+                                Anchor: (Full: 0);
+                            }
+
+                            Group #OrderDistanceCheck {
+                                Anchor: (Width: 16, Height: 16, Right: 4);
+                                Background: (TexturePath: "Icons/Checkmark.png");
+                                Visible: false;
+                            }
+                        }
+                    }
+                }
+
+                // Warning when party has more members than displayed and using fixed order
+                Group #HudCapacityWarning {
+                    LayoutMode: Left;
+                    Visible: false;
+                    Background: (Color: #4a2a2a(0.8));
+                    Padding: (Full: 10);
+                    Anchor: (Bottom: 12);
+
+                    Label {
+                        Text: "Your party has more members than can be displayed. Consider using distance-based ordering.";
+                        Style: (FontSize: 12, TextColor: #ffaa66);
+                        FlexWeight: 1;
+                    }
+                }
+
+                // Spacer
+                Group { FlexWeight: 1; }
+
+                // Save Button
+                $C.@TextButton #SaveMySettingsButton {
+                    Anchor: (Height: 44);
+                    Text: "Save Settings";
                 }
             }
 

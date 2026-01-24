@@ -1,8 +1,11 @@
 package com.gaukh.partymod;
 
 import com.gaukh.partymod.commands.PartyCommand;
+import com.gaukh.partymod.config.PlayerHudSettings;
+import com.gaukh.partymod.events.PartyEventBus;
 import com.gaukh.partymod.markers.PartyMarkerTicker;
 import com.gaukh.partymod.party.PartyManager;
+import com.gaukh.partymod.party.PartyPlayerListHud;
 import com.gaukh.partymod.party.PartyStorage;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.asset.common.CommonAssetModule;
@@ -41,6 +44,9 @@ public class PartyMod extends JavaPlugin {
             LOGGER.atSevere().withCause(e).log("Failed to initialize PartyStorage");
         }
 
+        // Load player HUD settings
+        PlayerHudSettings.load();
+
         // Register party member icon with CommonAssetModule
         registerPartyMemberIcon();
 
@@ -57,6 +63,11 @@ public class PartyMod extends JavaPlugin {
         // Register TickingSystem with EntityStoreRegistry
         getEntityStoreRegistry().registerSystem(PartyMarkerTicker.getInstance());
         LOGGER.atInfo().log("Registered PartyMarkerTicker as TickingSystem");
+
+        // Initialize and register HUD ticker
+        PartyPlayerListHud.getInstance().init();
+        getEntityStoreRegistry().registerSystem(PartyPlayerListHud.getInstance());
+        LOGGER.atInfo().log("Registered PartyPlayerListHud as TickingSystem");
     }
 
     private void registerPartyMemberIcon() {
@@ -97,6 +108,15 @@ public class PartyMod extends JavaPlugin {
 
     @Override
     protected void shutdown() {
+        // Cleanup HUD system
+        PartyPlayerListHud.getInstance().shutdown();
+
+        // Save player HUD settings
+        PlayerHudSettings.save();
+
+        // Clear all event listeners
+        PartyEventBus.clearListeners();
+
         PartyStorage.close();
         LOGGER.atInfo().log("PartyMod shutdown complete");
     }

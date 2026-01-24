@@ -149,9 +149,17 @@ public class PartyMarkerTicker extends TickingSystem<EntityStore> {
         // Check if player is in a party
         Party party = PartyMod.getInstance().getPartyManager().getPartyByPlayer(viewerUuid);
         if (party == null) {
+            // No party - clear filter so all players show natively
+            viewer.getWorldMapTracker().setPlayerMapFilter(null);
             removeAllMarkersForPlayer(viewerUuid, viewerRef);
             return;
         }
+
+        // Set filter to hide party members from native player markers
+        // Return true = hide from native markers (we show them with custom markers instead)
+        viewer.getWorldMapTracker().setPlayerMapFilter(otherPlayer ->
+            party.isMember(otherPlayer.getUuid())
+        );
 
         // Get viewer position for distance calculation
         TransformComponent viewerTransform = viewer.getTransformComponent();

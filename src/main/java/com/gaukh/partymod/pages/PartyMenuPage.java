@@ -1,6 +1,7 @@
 package com.gaukh.partymod.pages;
 
 import com.gaukh.partymod.PartyMod;
+import com.gaukh.partymod.config.PlayerHudSettings;
 import com.gaukh.partymod.party.*;
 import com.gaukh.partymod.ui.PartyMenuEventData;
 import com.hypixel.hytale.component.Ref;
@@ -30,6 +31,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         CREATE_PARTY_VIEW,
         PARTY_VIEW,
         SETTINGS_VIEW,
+        MY_SETTINGS_VIEW,
         INVITE_VIEW,
         PLAYER_ACTION_VIEW,
         INVITES_LIST_VIEW,
@@ -40,7 +42,8 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
     private enum TabState {
         PARTY,
-        SETTINGS
+        MY_SETTINGS,
+        LEADER_SETTINGS
     }
 
     private final PartyManager partyManager;
@@ -59,6 +62,12 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
     private UUID selectedPlayerUuid = null;
     private String pendingJoinPartyId = null;
     private String pendingConfirmAction = null;
+
+    // My Settings (HUD) state - loaded from PlayerHudSettings on view open
+    private boolean mySettingsShowHud = true;
+    private boolean mySettingsShowSelf = true;
+    private int mySettingsMaxDisplayed = 8;
+    private PlayerHudSettings.OrderMode mySettingsOrderMode = PlayerHudSettings.OrderMode.FIXED;
 
     public PartyMenuPage(@Nonnull PlayerRef playerRef, @Nonnull PartyMod plugin) {
         super(playerRef, CustomPageLifetime.CanDismiss, PartyMenuEventData.CODEC);
@@ -80,11 +89,30 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         events.addEventBinding(CustomUIEventBindingType.Activating, "#CloseButton",
                 EventData.of("Action", "close"), false);
 
-        // Tab Navigation
+        // Tab Navigation (Left TabBar)
         events.addEventBinding(CustomUIEventBindingType.Activating, "#PartyTab",
                 EventData.of("Action", "switchToPartyTab"), false);
-        events.addEventBinding(CustomUIEventBindingType.Activating, "#SettingsTab",
-                EventData.of("Action", "switchToSettingsTab"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#MySettingsTab",
+                EventData.of("Action", "switchToMySettingsTab"), false);
+        // Tab Navigation (Right TabBar - Leader only)
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#LeaderSettingsTab",
+                EventData.of("Action", "switchToLeaderSettingsTab"), false);
+
+        // My Settings View
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#ShowHudToggle",
+                EventData.of("Action", "toggleShowHud"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#ShowSelfToggle",
+                EventData.of("Action", "toggleShowSelf"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#HudMaxDecrease",
+                EventData.of("Action", "hudMaxChange").append("Target", "decrease"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#HudMaxIncrease",
+                EventData.of("Action", "hudMaxChange").append("Target", "increase"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#OrderFixed",
+                EventData.of("Action", "setOrderMode").append("Target", "FIXED"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#OrderDistance",
+                EventData.of("Action", "setOrderMode").append("Target", "DISTANCE"), false);
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#SaveMySettingsButton",
+                EventData.of("Action", "saveMySettings"), false);
 
         // No Party View
         events.addEventBinding(CustomUIEventBindingType.Activating, "#CreatePartyButton",
@@ -202,10 +230,42 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
                 currentView = ViewState.PARTY_VIEW;
                 refreshUI(ref, store);
             }
-            case "switchToSettingsTab" -> {
-                currentTab = TabState.SETTINGS;
+            case "switchToMySettingsTab" -> {
+                currentTab = TabState.MY_SETTINGS;
+                currentView = ViewState.MY_SETTINGS_VIEW;
+                loadMySettingsFromConfig();
+                refreshUI(ref, store);
+            }
+            case "switchToLeaderSettingsTab" -> {
+                currentTab = TabState.LEADER_SETTINGS;
                 currentView = ViewState.SETTINGS_VIEW;
                 loadSettingsFromParty();
+                refreshUI(ref, store);
+            }
+
+            // My Settings (HUD) Actions
+            case "toggleShowHud" -> {
+                mySettingsShowHud = !mySettingsShowHud;
+                refreshUI(ref, store);
+            }
+            case "toggleShowSelf" -> {
+                mySettingsShowSelf = !mySettingsShowSelf;
+                saveMySettingsToConfig();  // Auto-save so HUD updates immediately
+                refreshUI(ref, store);
+            }
+            case "hudMaxChange" -> {
+                mySettingsMaxDisplayed = Party.adjustBounded(target, mySettingsMaxDisplayed, 1, 8);
+                refreshUI(ref, store);
+            }
+            case "setOrderMode" -> {
+                if (target != null) {
+                    mySettingsOrderMode = PlayerHudSettings.OrderMode.valueOf(target);
+                    refreshUI(ref, store);
+                }
+            }
+            case "saveMySettings" -> {
+                saveMySettingsToConfig();
+                playerRef.sendMessage(Message.raw("HUD settings saved!"));
                 refreshUI(ref, store);
             }
 
@@ -230,11 +290,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
                 }
             }
             case "createMaxMembersChange" -> {
-                if ("increase".equals(target)) {
-                    selectedMaxMembers = Math.min(20, selectedMaxMembers + 1);
-                } else if ("decrease".equals(target)) {
-                    selectedMaxMembers = Math.max(1, selectedMaxMembers - 1);
-                }
+                selectedMaxMembers = Party.adjustBounded(target, selectedMaxMembers, 1, 20);
                 refreshUI(ref, store);
             }
             case "confirmCreate" -> {
@@ -347,11 +403,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
                 refreshUI(ref, store);
             }
             case "maxMembersChange" -> {
-                if ("increase".equals(target)) {
-                    selectedMaxMembers = Math.min(20, selectedMaxMembers + 1);
-                } else if ("decrease".equals(target)) {
-                    selectedMaxMembers = Math.max(1, selectedMaxMembers - 1);
-                }
+                selectedMaxMembers = Party.adjustBounded(target, selectedMaxMembers, 1, 20);
                 refreshUI(ref, store);
             }
             case "saveSettings" -> {
@@ -523,6 +575,27 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         }
     }
 
+    private void loadMySettingsFromConfig() {
+        PlayerHudSettings.HudSettings settings = PlayerHudSettings.get(playerRef.getUuid());
+        mySettingsShowHud = settings.showHud;
+        mySettingsShowSelf = settings.showSelf;
+        mySettingsMaxDisplayed = settings.maxDisplayedMembers;
+        mySettingsOrderMode = settings.orderMode;
+    }
+
+    private void saveMySettingsToConfig() {
+        PlayerHudSettings.HudSettings settings = new PlayerHudSettings.HudSettings(
+                mySettingsShowHud,
+                mySettingsShowSelf,
+                mySettingsMaxDisplayed,
+                mySettingsOrderMode
+        );
+        PlayerHudSettings.update(playerRef.getUuid(), settings);
+
+        // Immediately refresh HUD visibility based on new settings
+        PartyPlayerListHud.getInstance().refreshHudForPlayer(playerRef.getUuid());
+    }
+
     private void buildContent(@Nonnull UICommandBuilder cmd, @Nonnull UIEventBuilder events) {
         UUID playerUuid = playerRef.getUuid();
         Party party = partyManager.getPartyByPlayer(playerUuid);
@@ -538,13 +611,28 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         boolean isInParty = party != null;
         boolean isLeader = party != null && party.isLeader(playerUuid);
 
-        cmd.set("#TabBar.Visible", isInParty && currentView != ViewState.CONFIRMATION_VIEW);
-        cmd.set("#SettingsTab.Visible", isLeader);
+        // Show tab bar container when in party (but not during confirmation dialogs)
+        cmd.set("#TabBarContainer.Visible", isInParty && currentView != ViewState.CONFIRMATION_VIEW);
 
-        // Set selected tab
+        // Right tab bar (Leader Settings) only visible for leaders
+        cmd.set("#RightTabBar.Visible", isLeader);
+
+        // Set selected tabs
         if (isInParty) {
-            String selectedTab = currentTab == TabState.PARTY ? "Party" : "Settings";
-            cmd.set("#TabBar.SelectedTab", selectedTab);
+            // Left tab bar selection (Party or MySettings)
+            String leftSelectedTab = switch (currentTab) {
+                case PARTY -> "Party";
+                case MY_SETTINGS -> "MySettings";
+                case LEADER_SETTINGS -> "Party"; // Keep Party selected when on leader settings
+            };
+            cmd.set("#LeftTabBar.SelectedTab", leftSelectedTab);
+
+            // Right tab bar selection (Leader Settings)
+            if (currentTab == TabState.LEADER_SETTINGS) {
+                cmd.set("#RightTabBar.SelectedTab", "LeaderSettings");
+            } else {
+                cmd.set("#RightTabBar.SelectedTab", "");
+            }
         }
 
         // Handle confirmation view
@@ -557,8 +645,8 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         if (!isInParty) {
             // If not in party, reset party-related views to NO_PARTY
             if (currentView == ViewState.PARTY_VIEW || currentView == ViewState.SETTINGS_VIEW ||
-                currentView == ViewState.INVITE_VIEW || currentView == ViewState.PLAYER_ACTION_VIEW ||
-                currentView == ViewState.JOIN_REQUEST_VIEW) {
+                currentView == ViewState.MY_SETTINGS_VIEW || currentView == ViewState.INVITE_VIEW ||
+                currentView == ViewState.PLAYER_ACTION_VIEW || currentView == ViewState.JOIN_REQUEST_VIEW) {
                 currentView = ViewState.NO_PARTY_VIEW;
             }
         } else {
@@ -575,6 +663,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             case CREATE_PARTY_VIEW -> buildCreatePartyView(cmd, events);
             case PARTY_VIEW -> buildPartyView(cmd, events, playerUuid, party);
             case SETTINGS_VIEW -> buildSettingsView(cmd, events, party);
+            case MY_SETTINGS_VIEW -> buildMySettingsView(cmd, events, party);
             case INVITE_VIEW -> buildInvitePlayersView(cmd, events, playerUuid);
             case PLAYER_ACTION_VIEW -> buildPlayerActionView(cmd, events, playerUuid, party);
             case INVITES_LIST_VIEW -> buildInvitesListView(cmd, events, playerUuid);
@@ -588,6 +677,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         cmd.set("#CreatePartyView.Visible", false);
         cmd.set("#PartyView.Visible", false);
         cmd.set("#SettingsView.Visible", false);
+        cmd.set("#MySettingsView.Visible", false);
         cmd.set("#InvitePlayersView.Visible", false);
         cmd.set("#PlayerActionView.Visible", false);
         cmd.set("#InvitesListView.Visible", false);
@@ -606,8 +696,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             cmd.set("#ConfirmTitle.Text", "Disband Party");
             cmd.set("#ConfirmMessage.Text", "Are you sure you want to disband the party?");
         } else if ("transferLeadership".equals(pendingConfirmAction)) {
-            PlayerRef selectedRef = selectedPlayerUuid != null ? Universe.get().getPlayer(selectedPlayerUuid) : null;
-            String selectedName = selectedRef != null ? selectedRef.getUsername() : "this player";
+            String selectedName = selectedPlayerUuid != null ? Party.getPlayerName(selectedPlayerUuid) : "this player";
             cmd.set("#ConfirmTitle.Text", "Transfer Leadership");
             cmd.set("#ConfirmMessage.Text", "Make " + selectedName + " the new party leader?");
         }
@@ -631,8 +720,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
             cmd.set(selector + " #PartyName.Text", party.getName());
 
-            PlayerRef leaderRef = Universe.get().getPlayer(party.getLeaderUuid());
-            String leaderName = leaderRef != null ? leaderRef.getUsername() : "Unknown";
+            String leaderName = Party.getPlayerName(party.getLeaderUuid());
             cmd.set(selector + " #PartyLeader.Text", "Leader: " + leaderName);
             cmd.set(selector + " #MemberCount.Text", party.getMemberCount() + "/" + party.getMaxMembers());
 
@@ -711,12 +799,9 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         // Build member list
         int index = 0;
         for (UUID memberUuid : party.getMemberUuids()) {
-            PlayerRef memberRef = Universe.get().getPlayer(memberUuid);
-            String name = memberRef != null ? memberRef.getUsername() : "Unknown";
-
-            boolean isOnline = memberRef != null;
-            String roleDisplay = party.getRoleDisplayName(memberUuid);
-            String status = isOnline ? roleDisplay : roleDisplay + " (Offline)";
+            String name = party.getMemberName(memberUuid);
+            String status = party.getMemberStatus(memberUuid);
+            boolean isOnline = Party.isPlayerOnline(memberUuid);
 
             String selector = "#PartyMembersList[" + index + "]";
             cmd.append("#PartyMembersList", "Components/PartyButton.ui");
@@ -766,6 +851,36 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
         cmd.set("#MaxMembersValue.Text", String.valueOf(selectedMaxMembers));
     }
 
+    private void buildMySettingsView(@Nonnull UICommandBuilder cmd,
+                                     @Nonnull UIEventBuilder events,
+                                     @Nullable Party party) {
+        cmd.set("#MySettingsView.Visible", true);
+
+        // Load settings if not already loaded
+        if (mySettingsMaxDisplayed < 1 || mySettingsMaxDisplayed > 8) {
+            loadMySettingsFromConfig();
+        }
+
+        // Set toggle button states (text + checkmark visibility)
+        cmd.set("#ShowHudToggle.Text", mySettingsShowHud ? "Enabled" : "Disabled");
+        cmd.set("#ShowHudCheck.Visible", mySettingsShowHud);
+        cmd.set("#ShowSelfToggle.Text", mySettingsShowSelf ? "Enabled" : "Disabled");
+        cmd.set("#ShowSelfCheck.Visible", mySettingsShowSelf);
+
+        // Set max displayed value
+        cmd.set("#HudMaxValue.Text", String.valueOf(mySettingsMaxDisplayed));
+
+        // Set order mode checkmarks
+        cmd.set("#OrderFixedCheck.Visible", mySettingsOrderMode == PlayerHudSettings.OrderMode.FIXED);
+        cmd.set("#OrderDistanceCheck.Visible", mySettingsOrderMode == PlayerHudSettings.OrderMode.DISTANCE);
+
+        // Show warning if party has more members than can be displayed and not using distance mode
+        boolean showWarning = party != null
+                && party.getMemberCount() > mySettingsMaxDisplayed
+                && mySettingsOrderMode != PlayerHudSettings.OrderMode.DISTANCE;
+        cmd.set("#HudCapacityWarning.Visible", showWarning);
+    }
+
     private void buildInvitePlayersView(@Nonnull UICommandBuilder cmd,
                                         @Nonnull UIEventBuilder events,
                                         @Nonnull UUID playerUuid) {
@@ -808,9 +923,8 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
 
         cmd.set("#PlayerActionView.Visible", true);
 
-        PlayerRef selectedRef = Universe.get().getPlayer(selectedPlayerUuid);
-        String selectedName = selectedRef != null ? selectedRef.getUsername() : "Unknown";
-        boolean isOnline = selectedRef != null;
+        String selectedName = party.getMemberName(selectedPlayerUuid);
+        boolean isOnline = Party.isPlayerOnline(selectedPlayerUuid);
         PartyRole currentRole = party.getRole(selectedPlayerUuid);
         String roleDisplay = party.getRoleDisplayName(selectedPlayerUuid);
 
@@ -855,8 +969,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             Party party = partyManager.getPartyById(invite.getPartyId());
             String partyName = party != null ? party.getName() : "Unknown Party";
 
-            PlayerRef inviterRef = Universe.get().getPlayer(invite.getInviterUuid());
-            String inviterName = inviterRef != null ? inviterRef.getUsername() : "Unknown";
+            String inviterName = Party.getPlayerName(invite.getInviterUuid());
 
             cmd.set(selector + " #PartyName.Text", partyName);
             cmd.set(selector + " #InviterName.Text", "Invited by: " + inviterName);
@@ -897,8 +1010,7 @@ public class PartyMenuPage extends InteractiveCustomUIPage<PartyMenuEventData> {
             String selector = "#RequestsList[" + index + "]";
             cmd.append("#RequestsList", "Components/RequestEntryButton.ui");
 
-            PlayerRef requesterRef = Universe.get().getPlayer(request.getRequesterUuid());
-            String name = requesterRef != null ? requesterRef.getUsername() : "Unknown";
+            String name = Party.getPlayerName(request.getRequesterUuid());
             cmd.set(selector + " #RequesterName.Text", name);
 
             events.addEventBinding(CustomUIEventBindingType.Activating, selector + " #AcceptRequest",

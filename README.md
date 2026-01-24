@@ -1,13 +1,11 @@
 # Party Mod
 
-> A party system mod for Hytale that allows players to group up and play together and see each other on the compass.
+> A party system mod for Hytale that allows players to group up and play together, see each other on the compass, and track party members with a customizable HUD.
 
-## Planned Features:
-- Visible Party Members on the HUD with HP and Distance
+## Planned Features
 - 3D Icons above Party Members' Heads
 - Always visible names
 - Party Chat
-- All above configurable to your own liking
 
 ---
 
@@ -28,6 +26,21 @@
 - Create, join, leave & disband parties
 - Browse available parties in the party list
 - Invite players directly from the player list
+
+### Party Member HUD
+
+- Real-time display of party members' health, stamina, and distance
+- Customizable via "My Settings" menu:
+  - Show/hide entire HUD
+  - Show/hide yourself in the list
+  - Set maximum displayed members (1-8)
+  - Sort by: Distance, Name, Role, or Health
+
+### Party Compass & Map
+
+- Party members shown on compass and map with custom party icon
+- Distance displayed next to member names (e.g., "PlayerName (123m)")
+- Integrated with native Hytale player markers - no duplicate markers
 
 ### Access Control
 
@@ -50,16 +63,12 @@ Leader (5)
 
 Higher ranks can promote, demote & kick lower ranks.
 
-### Party Compass
-
-See party members on the compass with distance in blocks, marked with a crown icon.
-
 ---
 
 ## Installation
 
 1. Download the latest release
-2. Place the `.jar` file in your server's `mods` folder, which is within ``universe/worlds/``
+2. Place the `.jar` file in your server's `mods` folder, which is within `universe/worlds/`
 3. Restart the server
 
 ---

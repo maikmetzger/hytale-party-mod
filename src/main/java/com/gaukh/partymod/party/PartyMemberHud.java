@@ -82,9 +82,9 @@ public class PartyMemberHud extends CustomUIHud {
         // Store builder reference for later updates (like HealPreviewHUD pattern)
         this.builder = builder;
 
-        // Load the party HUD UI file from HUD/Party/ folder
-        builder.append("HUD/Party/PartyHud.ui");
-        LOGGER.atInfo().log("[DEBUG] Appended HUD/Party/PartyHud.ui to builder");
+        // Load the party HUD UI file from Hud/Party/ folder
+        builder.append("Hud/Party/PartyHud.ui");
+        LOGGER.atInfo().log("[DEBUG] Appended Hud/Party/PartyHud.ui to builder");
 
         // For now, just log that HUD was loaded - test basic visibility first
         // TODO: Re-enable member visibility once basic HUD works

@@ -44,6 +44,8 @@ dependencies {
     compileOnly files(hytaleServerJar)
     compileOnly group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
     implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
+    // SLF4J NOP - silently ignores all logging (needed by SQLite-JDBC)
+    implementation 'org.slf4j:slf4j-nop:2.0.9'
 }
 
 // Server läuft im Projekt unter /run

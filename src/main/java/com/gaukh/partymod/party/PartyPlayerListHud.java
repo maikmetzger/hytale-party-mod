@@ -1,6 +1,7 @@
 package com.gaukh.partymod.party;
 
 import com.gaukh.partymod.PartyMod;
+import com.gaukh.partymod.compat.MultipleHudCompat;
 import com.gaukh.partymod.config.PlayerHudSettings;
 import com.gaukh.partymod.events.*;
 import com.hypixel.hytale.component.Store;
@@ -433,8 +434,14 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
             state.hudInstance = hud;
             state.hudVisible = true;  // Mark as visible ONLY after successful creation
 
-            LOGGER.atInfo().log("[DEBUG] showHudForPlayer: Calling setCustomHud in world.execute...");
-            player.getHudManager().setCustomHud(playerRef, hud);
+            // Use MultipleHUD if available for compatibility with other HUD mods
+            if (MultipleHudCompat.isAvailable()) {
+                LOGGER.atInfo().log("[DEBUG] showHudForPlayer: Using MultipleHUD.setCustomHud...");
+                MultipleHudCompat.setCustomHud(player, playerRef, MultipleHudCompat.PARTY_HUD_ID, hud);
+            } else {
+                LOGGER.atInfo().log("[DEBUG] showHudForPlayer: Using native setCustomHud...");
+                player.getHudManager().setCustomHud(playerRef, hud);
+            }
             LOGGER.atInfo().log("[DEBUG] showHudForPlayer: setCustomHud DONE, hudVisible=true");
 
             // Immediately populate member data after HUD is created

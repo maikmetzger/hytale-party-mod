@@ -43,7 +43,11 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
 
     // Tick accumulator for stat update interval
     private float accumulator = 0f;
-    private static final float STAT_UPDATE_INTERVAL = 1.0f; // 1 second between stat updates (reduces HUD re-renders)
+    private static final float STAT_UPDATE_INTERVAL = 1.0f; // 1 update/sec for HUD stats
+
+    // Separate accumulator for cleanup (runs less frequently)
+    private float cleanupAccumulator = 0f;
+    private static final float CLEANUP_INTERVAL = 3.0f; // Cleanup offline states every 3 seconds
 
     // Configurable minimum member count to show HUD (default 2, set to 1 for debug/solo)
     private static int minMembersForHud = 1;
@@ -78,6 +82,9 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
 
         /**
          * Check if any stat has changed enough to warrant a UI update.
+         * Uses tolerances to avoid unnecessary updates:
+         * - Health/Stamina: 0.1 tolerance (fine-grained for combat feedback)
+         * - Distance: 5 block tolerance (reduces updates during movement)
          */
         boolean hasChanged(float health, float maxHealth, float stamina,
                            float maxStamina, int distance, boolean online, String name) {
@@ -86,7 +93,7 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
                     || Math.abs(maxHealth - lastMaxHealth) > 0.1f
                     || Math.abs(stamina - lastStamina) > 0.1f
                     || Math.abs(maxStamina - lastMaxStamina) > 0.1f
-                    || distance != lastDistance
+                    || Math.abs(distance - lastDistance) > 5  // 5 block tolerance for movement
                     || online != lastOnline
                     || !name.equals(lastName);
         }
@@ -298,13 +305,20 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
 
         LOGGER.atInfo().log("Handling party leave for player %s", leavingPlayerUuid);
 
-        // Hide HUD for leaving player first (before removing state)
+        // Cleanup HUD state for leaving player
         ViewerHudState leaverState = viewerStates.get(leavingPlayerUuid);
-        if (leaverState != null && leaverState.hudVisible) {
-            try {
-                hideHudForPlayer(leavingPlayerUuid);
-            } catch (Exception e) {
-                LOGGER.atWarning().withCause(e).log("Error hiding HUD for leaving player %s", leavingPlayerUuid);
+        if (leaverState != null) {
+            if (leaverState.hudVisible) {
+                try {
+                    hideHudForPlayer(leavingPlayerUuid);
+                } catch (Exception e) {
+                    LOGGER.atWarning().withCause(e).log("Error hiding HUD for leaving player %s", leavingPlayerUuid);
+                }
+            }
+            // Clear inner maps to prevent memory leak
+            leaverState.memberStates.clear();
+            if (leaverState.hudInstance != null) {
+                leaverState.hudInstance.clearMembers();
             }
         }
         // Now remove the state
@@ -337,10 +351,20 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
         // Hide HUD for all former members
         for (UUID memberUuid : event.getFormerMemberUuids()) {
             ViewerHudState state = viewerStates.get(memberUuid);
-            if (state != null && state.hudVisible) {
-                hideHudForPlayer(memberUuid);
+            if (state != null) {
+                // First hide the HUD if visible
+                if (state.hudVisible) {
+                    hideHudForPlayer(memberUuid);
+                }
+                // Clear memberStates to release MemberHudState objects before removing
+                // This prevents memory leak when players switch parties frequently
+                state.memberStates.clear();
+                // Clear HUD display if instance exists
+                if (state.hudInstance != null) {
+                    state.hudInstance.clearMembers();
+                }
             }
-            // Remove state AFTER hiding (hideHudForPlayer needs to access it)
+            // Remove state AFTER cleanup (hideHudForPlayer needs to access it)
             viewerStates.remove(memberUuid);
         }
     }
@@ -350,13 +374,10 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
     private void updateHudVisibility(@Nonnull UUID playerUuid, @Nullable Party party) {
         ViewerHudState state = viewerStates.get(playerUuid);
         if (state == null) {
-            LOGGER.atInfo().log("[DEBUG] updateHudVisibility: no state for player %s", playerUuid);
             return;
         }
 
         boolean shouldShow = shouldShowHud(party, playerUuid);
-        LOGGER.atInfo().log("[DEBUG] updateHudVisibility: player=%s shouldShow=%s currentlyVisible=%s",
-                playerUuid, shouldShow, state.hudVisible);
 
         if (shouldShow && !state.hudVisible) {
             LOGGER.atInfo().log("[DEBUG] Will show HUD for player %s", playerUuid);
@@ -371,23 +392,18 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
 
     private boolean shouldShowHud(@Nullable Party party, @Nonnull UUID viewerUuid) {
         if (party == null) {
-            LOGGER.atInfo().log("[DEBUG] shouldShowHud: party is null, returning false");
             return false;
         }
 
         // Check player's HUD visibility setting
         PlayerHudSettings.HudSettings settings = PlayerHudSettings.get(viewerUuid);
         if (!settings.showHud) {
-            LOGGER.atInfo().log("[DEBUG] shouldShowHud: player %s has showHud=false", viewerUuid);
             return false;
         }
 
         // Count real members + fake members for testing
         int totalCount = party.getMemberCount() + party.getFakeMembers().size();
-        boolean result = totalCount >= minMembersForHud;
-        LOGGER.atInfo().log("[DEBUG] shouldShowHud: members=%d, fakeMembers=%d, total=%d, min=%d, result=%s",
-                party.getMemberCount(), party.getFakeMembers().size(), totalCount, minMembersForHud, result);
-        return result;
+        return totalCount >= minMembersForHud;
     }
 
     private void showHudForPlayer(@Nonnull UUID playerUuid, @Nonnull Party party) {
@@ -453,7 +469,6 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
     private void hideHudForPlayer(@Nonnull UUID playerUuid) {
         PlayerRef playerRef = Universe.get().getPlayer(playerUuid);
         if (playerRef == null) {
-            LOGGER.atFine().log("[DEBUG] hideHudForPlayer: playerRef is null for %s", playerUuid);
             // Still clear state even if player is gone
             ViewerHudState state = viewerStates.get(playerUuid);
             if (state != null) {
@@ -465,7 +480,6 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
 
         Player player = playerRef.getComponent(Player.getComponentType());
         if (player == null) {
-            LOGGER.atFine().log("[DEBUG] hideHudForPlayer: Player component is null for %s", playerUuid);
             ViewerHudState state = viewerStates.get(playerUuid);
             if (state != null) {
                 state.hudInstance = null;
@@ -475,7 +489,6 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
         }
 
         if (player.getWorld() == null) {
-            LOGGER.atFine().log("[DEBUG] hideHudForPlayer: Player world is null for %s", playerUuid);
             ViewerHudState state = viewerStates.get(playerUuid);
             if (state != null) {
                 state.hudInstance = null;
@@ -514,7 +527,18 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
 
     @Override
     public void tick(float dt, int index, Store<EntityStore> store) {
-        accumulator += dt;
+        // Cap dt to prevent accumulator spikes after tab-out/tab-in
+        float cappedDt = Math.min(dt, STAT_UPDATE_INTERVAL);
+        accumulator += cappedDt;
+        cleanupAccumulator += cappedDt;
+
+        // Cleanup runs less frequently (every 3 seconds) - expensive operation
+        if (cleanupAccumulator >= CLEANUP_INTERVAL) {
+            cleanupAccumulator = 0f;
+            cleanupOfflinePlayerStates();
+        }
+
+        // Stats update runs every second
         if (accumulator >= STAT_UPDATE_INTERVAL) {
             accumulator = 0f;
             // Check for players who are in a party but don't have HUD showing
@@ -576,19 +600,12 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
         while (iterator.hasNext()) {
             Map.Entry<UUID, ViewerHudState> entry = iterator.next();
             UUID playerUuid = entry.getKey();
-            ViewerHudState state = entry.getValue();
 
             // Check if player is still online
             PlayerRef playerRef = Universe.get().getPlayer(playerUuid);
             if (playerRef == null) {
-                // Player is offline - reset their HUD state so reconnection works properly
-                if (state.hudVisible || state.hudInstance != null) {
-                    LOGGER.atInfo().log("[DEBUG] cleanupOfflinePlayerStates: Resetting stale HUD state for offline player %s",
-                            playerUuid);
-                    state.hudInstance = null;
-                    state.hudVisible = false;
-                    state.memberStates.clear();
-                }
+                // Player is offline - REMOVE the entry entirely to prevent memory leak
+                iterator.remove();
             }
         }
     }
@@ -654,6 +671,12 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
                     fakeMember.getUuid(), MemberHudState::new
             );
             updateFakeMemberStats(viewerRef, memberState, fakeMember, viewerX, viewerY, viewerZ);
+        }
+
+        // BATCHED UPDATE: Push all member data changes to UI in one operation
+        // This reduces pushUpdate() calls from N (one per member) to 1 (one per viewer)
+        if (viewerState.hudInstance != null) {
+            viewerState.hudInstance.pushUpdate();
         }
     }
 
@@ -851,11 +874,9 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
             return;
         }
 
-        LOGGER.atFine().log("Updating HUD for viewer %s: member %s health=%.1f/%.1f stamina=%.1f/%.1f dist=%dm online=%s",
-                viewerUuid, name, health, maxHealth, stamina, maxStamina, distance, online);
-
-        // Push update to the actual HUD instance
-        state.hudInstance.updateMember(memberUuid, name, health, maxHealth, stamina, maxStamina, distance, online);
+        // Use updateMemberData for batched updates (no pushUpdate per member)
+        // The caller (updateMemberStatsForViewer) will call pushUpdate() once at the end
+        state.hudInstance.updateMemberData(memberUuid, name, health, maxHealth, stamina, maxStamina, distance, online);
     }
 
     // ==================== IMMEDIATE DATA POPULATION ====================

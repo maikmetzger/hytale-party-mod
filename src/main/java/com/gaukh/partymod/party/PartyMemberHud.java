@@ -8,9 +8,12 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,6 +22,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * This is the actual HUD that gets registered with the HudManager.
  * It displays a list of party members with their health, stamina, and distance.
+ * <p>
+ * PERFORMANCE NOTES:
+ * - Uses fresh UICommandBuilder per update to prevent command accumulation
+ * - Uses update(false, builder) to preserve UI structure while updating values
+ * - Thread-safe via synchronized blocks on critical sections
+ * - Cached Comparator to avoid allocation per sort
  */
 public class PartyMemberHud extends CustomUIHud {
 
@@ -26,32 +35,69 @@ public class PartyMemberHud extends CustomUIHud {
 
     private static final int MAX_DISPLAYED_MEMBERS = 8;
 
-    // Store builder reference for updates (like HealPreviewHUD pattern)
-    private UICommandBuilder builder;
+    // Pre-cached UI selectors to avoid String concatenation in hot loops
+    private static final String[] NAME_SELECTORS = new String[MAX_DISPLAYED_MEMBERS];
+    private static final String[] DISTANCE_SELECTORS = new String[MAX_DISPLAYED_MEMBERS];
+    private static final String[] HEALTH_SELECTORS = new String[MAX_DISPLAYED_MEMBERS];
+    private static final String[] STAMINA_SELECTORS = new String[MAX_DISPLAYED_MEMBERS];
+    private static final String[] VISIBLE_SELECTORS = new String[MAX_DISPLAYED_MEMBERS];
+
+    static {
+        for (int i = 0; i < MAX_DISPLAYED_MEMBERS; i++) {
+            NAME_SELECTORS[i] = "#Member" + i + "Name.Text";
+            DISTANCE_SELECTORS[i] = "#Member" + i + "Distance.Text";
+            HEALTH_SELECTORS[i] = "#Member" + i + "Health.Value";
+            STAMINA_SELECTORS[i] = "#Member" + i + "Stamina.Value";
+            VISIBLE_SELECTORS[i] = "#Member" + i + ".Visible";
+        }
+    }
+
+    // Pre-cached distance strings for common distances (0-999m)
+    private static final String[] DISTANCE_STRINGS = new String[1000];
+    static {
+        for (int i = 0; i < 1000; i++) {
+            DISTANCE_STRINGS[i] = "(" + i + "m)";
+        }
+    }
+
+    // Flag to track if HUD has been initialized (build() was called)
+    // We no longer store the builder - instead create fresh ones per update
+    private volatile boolean hudInitialized = false;
 
     // Store viewer UUID for settings lookup
     private final UUID viewerUuid;
 
-    // Track member data for display
+    // Track member data for display (thread-safe map)
     private final Map<UUID, MemberDisplayData> memberData = new ConcurrentHashMap<>();
 
-    // Track member order for consistent display
-    private final List<UUID> memberOrder = new ArrayList<>();
+    // Track member order for consistent display (synchronized for thread-safety)
+    private final Set<UUID> memberOrder = Collections.synchronizedSet(new LinkedHashSet<>());
 
-    // Flag to track if an update is pending (data was added before builder was ready)
+    // Flag to track if an update is pending (data was added before build() was called)
     private volatile boolean pendingUpdate = false;
+
+    // Reusable lists - protected by synchronized(this) in methods that use them
+    private final List<UUID> reusableMembersToShow = new ArrayList<>(MAX_DISPLAYED_MEMBERS);
+    private final List<UUID> reusableOnlineMembers = new ArrayList<>(MAX_DISPLAYED_MEMBERS);
+
+    // Cached Comparator for distance sorting - avoids creating new Comparator per pushUpdate()
+    // The lambda captures 'memberData' reference (not contents), so it always reads fresh data
+    private final Comparator<UUID> distanceComparator = Comparator.comparingInt(uuid -> {
+        MemberDisplayData data = memberData.get(uuid);
+        return data != null ? data.distance : Integer.MAX_VALUE;
+    });
 
     /**
      * Data for displaying a single party member.
      */
     public static class MemberDisplayData {
-        public String name;
-        public float health;
-        public float maxHealth;
-        public float stamina;
-        public float maxStamina;
-        public int distance;
-        public boolean online;
+        public volatile String name;
+        public volatile float health;
+        public volatile float maxHealth;
+        public volatile float stamina;
+        public volatile float maxStamina;
+        public volatile int distance;
+        public volatile boolean online;
 
         public MemberDisplayData(String name) {
             this.name = name;
@@ -64,71 +110,51 @@ public class PartyMemberHud extends CustomUIHud {
         }
 
         public float getHealthPercent() {
-            return maxHealth > 0 ? health / maxHealth : 0;
+            float max = maxHealth;
+            return max > 0 ? health / max : 0;
         }
 
         public float getStaminaPercent() {
-            return maxStamina > 0 ? stamina / maxStamina : 0;
+            float max = maxStamina;
+            return max > 0 ? stamina / max : 0;
         }
     }
 
     public PartyMemberHud(@Nonnull PlayerRef playerRef) {
         super(playerRef);
         this.viewerUuid = playerRef.getUuid();
-        LOGGER.atInfo().log("[DEBUG] PartyMemberHud CONSTRUCTOR called for player %s", playerRef.getUsername());
+        LOGGER.atInfo().log("PartyMemberHud created for player %s", playerRef.getUsername());
     }
 
     @Override
     protected void build(@Nonnull UICommandBuilder builder) {
-        LOGGER.atInfo().log("[DEBUG] PartyMemberHud BUILD called, memberData size=%d, pendingUpdate=%s",
-                memberData.size(), pendingUpdate);
+        LOGGER.atInfo().log("PartyMemberHud build() called, memberData size=%d", memberData.size());
 
-        // Store builder reference for later updates (like HealPreviewHUD pattern)
-        this.builder = builder;
-
-        // Load the party HUD UI file from Hud/Party/ folder
+        // Load the party HUD UI file - this establishes the UI structure
         builder.append("Hud/Party/PartyHud.ui");
-        LOGGER.atInfo().log("[DEBUG] Appended Hud/Party/PartyHud.ui to builder");
+
+        // Mark HUD as initialized
+        hudInitialized = true;
 
         // If there were updates queued before build() was called, process them now
         if (pendingUpdate || !memberData.isEmpty()) {
-            LOGGER.atInfo().log("[DEBUG] Processing pending update after build(), memberData size=%d", memberData.size());
             pendingUpdate = false;
             pushUpdate();
         }
 
-        LOGGER.atInfo().log("[DEBUG] HUD loaded successfully, memberData size=%d", memberData.size());
+        LOGGER.atInfo().log("PartyMemberHud build() complete");
     }
 
     /**
-     * Sets data for a single member slot using simple selector syntax.
-     * Uses #ElementId.Property format like HealPreviewHUD.
+     * Updates the display data for a member WITHOUT pushing to the UI.
+     * Use this for batched updates - call pushUpdate() once after all members are updated.
      */
-    private void setMemberData(int index, MemberDisplayData data, boolean visible) {
-        // Simple selector: #Member0.Visible (not nested)
-        builder.set("#Member" + index + ".Visible", visible);
-
-        if (visible && data != null) {
-            // For nested elements, we need unique IDs in the UI file
-            // For now, just set visibility - we'll update UI file structure if needed
-            LOGGER.atFine().log("Setting member %d: %s, visible=%s", index, data.name, visible);
-        }
-    }
-
-    /**
-     * Updates the display data for a member and pushes changes to the UI.
-     */
-    public void updateMember(@Nonnull UUID memberUuid, @Nonnull String name,
-                             float health, float maxHealth,
-                             float stamina, float maxStamina,
-                             int distance, boolean online) {
-        LOGGER.atFine().log("[DEBUG] updateMember called: %s health=%.0f/%.0f dist=%dm", name, health, maxHealth, distance);
-
-        // Track member order - add to list if new
-        if (!memberOrder.contains(memberUuid)) {
-            memberOrder.add(memberUuid);
-            LOGGER.atInfo().log("[DEBUG] Added new member to HUD: %s (total: %d)", name, memberOrder.size());
-        }
+    public void updateMemberData(@Nonnull UUID memberUuid, @Nonnull String name,
+                                  float health, float maxHealth,
+                                  float stamina, float maxStamina,
+                                  int distance, boolean online) {
+        // Track member order - Set.add() returns true if element was new
+        memberOrder.add(memberUuid);
 
         MemberDisplayData data = memberData.computeIfAbsent(memberUuid, k -> new MemberDisplayData(name));
         data.name = name;
@@ -138,9 +164,6 @@ public class PartyMemberHud extends CustomUIHud {
         data.maxStamina = maxStamina;
         data.distance = distance;
         data.online = online;
-
-        // Push update to the UI
-        pushUpdate();
     }
 
     /**
@@ -149,7 +172,6 @@ public class PartyMemberHud extends CustomUIHud {
     public void removeMember(@Nonnull UUID memberUuid) {
         memberOrder.remove(memberUuid);
         if (memberData.remove(memberUuid) != null) {
-            LOGGER.atInfo().log("[DEBUG] Removed member from HUD (remaining: %d)", memberOrder.size());
             pushUpdate();
         }
     }
@@ -160,28 +182,26 @@ public class PartyMemberHud extends CustomUIHud {
     public void clearMembers() {
         memberOrder.clear();
         memberData.clear();
-        LOGGER.atInfo().log("[DEBUG] Cleared all members from HUD");
         pushUpdate();
     }
 
     /**
      * Hides the entire HUD by setting the root container visibility to false.
-     * This is safer than removing the HUD which can cause engine crashes.
-     * Named setHudVisible to avoid conflict with engine's show()/hide() methods.
+     * Uses a fresh UICommandBuilder to prevent command accumulation.
      */
     public void setHudVisible(boolean visible) {
-        LOGGER.atInfo().log("[DEBUG] PartyMemberHud.setHudVisible(%s) called", visible);
-        if (builder == null) {
-            LOGGER.atInfo().log("[DEBUG] setHudVisible: builder is null, marking pendingUpdate=true");
+        if (!hudInitialized) {
             pendingUpdate = true;
             return;
         }
-        // Set visibility on both root and container
-        builder.set("#PartyHudRoot.Visible", visible);
-        builder.set("#MemberListContainer.Visible", visible);
-        // Use update(true, builder) to force a full UI refresh
-        update(true, builder);
-        LOGGER.atInfo().log("[DEBUG] PartyMemberHud.setHudVisible - set Visible=%s (full update)", visible);
+
+        // Create fresh builder to prevent command accumulation
+        UICommandBuilder freshBuilder = new UICommandBuilder();
+        freshBuilder.set("#PartyHudRoot.Visible", visible);
+        freshBuilder.set("#MemberListContainer.Visible", visible);
+
+        // update(false, ...) preserves UI structure, only updates values
+        update(false, freshBuilder);
     }
 
     /**
@@ -192,32 +212,39 @@ public class PartyMemberHud extends CustomUIHud {
     }
 
     /**
-     * Lightweight update: only updates health and stamina bar values for visible members.
-     * Does NOT update name, distance, or visibility - much faster than full pushUpdate().
-     * Call this for periodic stat refreshes.
+     * Lightweight update: only updates health and stamina bar values.
+     * Uses a fresh UICommandBuilder to prevent command accumulation.
      */
     public void pushBarsOnly() {
-        if (builder == null) {
+        if (!hudInitialized) {
             return;
         }
 
-        int visibleCount = Math.min(memberOrder.size(), MAX_DISPLAYED_MEMBERS);
+        // Create fresh builder to prevent command accumulation
+        UICommandBuilder freshBuilder = new UICommandBuilder();
+
+        // Synchronized snapshot of memberOrder to prevent ConcurrentModificationException
+        List<UUID> snapshot;
+        synchronized (memberOrder) {
+            snapshot = new ArrayList<>(memberOrder);
+        }
+
+        int visibleCount = Math.min(snapshot.size(), MAX_DISPLAYED_MEMBERS);
         for (int i = 0; i < visibleCount; i++) {
-            UUID memberUuid = memberOrder.get(i);
+            UUID memberUuid = snapshot.get(i);
             MemberDisplayData data = memberData.get(memberUuid);
             if (data != null) {
-                builder.set("#Member" + i + "Health.Value", data.getHealthPercent());
-                builder.set("#Member" + i + "Stamina.Value", data.getStaminaPercent());
+                freshBuilder.set(HEALTH_SELECTORS[i], data.getHealthPercent());
+                freshBuilder.set(STAMINA_SELECTORS[i], data.getStaminaPercent());
             }
         }
 
-        update(true, builder);
-        LOGGER.atFine().log("[DEBUG] pushBarsOnly: updated health/stamina for %d members", visibleCount);
+        // update(false, ...) preserves UI structure, only updates values
+        update(false, freshBuilder);
     }
 
     /**
      * Updates just the health/stamina data for a member without pushing to UI.
-     * Call pushBarsOnly() afterwards to send the update.
      */
     public void updateMemberBars(@Nonnull UUID memberUuid, float health, float maxHealth,
                                   float stamina, float maxStamina) {
@@ -232,12 +259,11 @@ public class PartyMemberHud extends CustomUIHud {
 
     /**
      * Pushes the current state to the UI.
-     * Uses the stored builder reference like HealPreviewHUD pattern.
-     * Respects player HUD settings (showSelf, orderMode, maxDisplayedMembers).
+     * Creates a fresh UICommandBuilder each time to prevent command accumulation.
+     * Uses update(false, builder) to preserve UI structure while updating values.
      */
     public void pushUpdate() {
-        if (builder == null) {
-            LOGGER.atInfo().log("[DEBUG] pushUpdate: builder is null, marking pendingUpdate=true");
+        if (!hudInitialized) {
             pendingUpdate = true;
             return;
         }
@@ -245,72 +271,68 @@ public class PartyMemberHud extends CustomUIHud {
         // Load player settings
         PlayerHudSettings.HudSettings settings = PlayerHudSettings.get(viewerUuid);
 
-        LOGGER.atFine().log("[DEBUG] pushUpdate called, memberOrder size=%d, settings: showSelf=%s, orderMode=%s, max=%d",
-                memberOrder.size(), settings.showSelf, settings.orderMode, settings.maxDisplayedMembers);
+        // Synchronized block to protect reusable lists from concurrent access
+        synchronized (this) {
+            // Create synchronized snapshot of memberOrder
+            reusableMembersToShow.clear();
+            synchronized (memberOrder) {
+                reusableMembersToShow.addAll(memberOrder);
+            }
 
-        // Create filtered list of members to display
-        List<UUID> membersToShow = new ArrayList<>(memberOrder);
+            // Filter: remove self if showSelf is disabled
+            if (!settings.showSelf) {
+                reusableMembersToShow.remove(viewerUuid);
+            }
 
-        // Filter: remove self if showSelf is disabled
-        if (!settings.showSelf) {
-            membersToShow.remove(viewerUuid);
-        }
+            // Sort by distance if orderMode is DISTANCE (uses cached Comparator)
+            if (settings.orderMode == PlayerHudSettings.OrderMode.DISTANCE) {
+                reusableMembersToShow.sort(distanceComparator);
+            }
 
-        // Sort by distance if orderMode is DISTANCE
-        if (settings.orderMode == PlayerHudSettings.OrderMode.DISTANCE) {
-            membersToShow.sort(Comparator.comparingInt(uuid -> {
+            // Apply maxDisplayedMembers limit
+            int limit = Math.min(settings.maxDisplayedMembers, MAX_DISPLAYED_MEMBERS);
+
+            // Filter out offline members
+            reusableOnlineMembers.clear();
+            for (UUID uuid : reusableMembersToShow) {
                 MemberDisplayData data = memberData.get(uuid);
-                return data != null ? data.distance : Integer.MAX_VALUE;
-            }));
-        }
-
-        // Apply maxDisplayedMembers limit (min of setting and MAX_DISPLAYED_MEMBERS)
-        int limit = Math.min(settings.maxDisplayedMembers, MAX_DISPLAYED_MEMBERS);
-
-        // Filter out offline members before display
-        // This prevents empty slots from appearing for offline players
-        List<UUID> onlineMembers = new ArrayList<>();
-        for (UUID uuid : membersToShow) {
-            MemberDisplayData data = memberData.get(uuid);
-            if (data != null && data.online) {
-                onlineMembers.add(uuid);
-            }
-        }
-
-        // Update each member slot (only online members are shown)
-        for (int i = 0; i < MAX_DISPLAYED_MEMBERS; i++) {
-            if (i < onlineMembers.size() && i < limit) {
-                UUID memberUuid = onlineMembers.get(i);
-                MemberDisplayData data = memberData.get(memberUuid);
-                if (data != null) {
-                    // Set the name text
-                    builder.set("#Member" + i + "Name.Text", data.name);
-
-                    // Set the distance text (format: "(123m)")
-                    builder.set("#Member" + i + "Distance.Text", "(" + data.distance + "m)");
-
-                    // Set the health bar value (0.0 to 1.0)
-                    builder.set("#Member" + i + "Health.Value", data.getHealthPercent());
-
-                    // Set the stamina bar value (0.0 to 1.0)
-                    builder.set("#Member" + i + "Stamina.Value", data.getStaminaPercent());
-
-                    // Show the entire member slot
-                    builder.set("#Member" + i + ".Visible", true);
-                } else {
-                    // No data - hide slot
-                    builder.set("#Member" + i + ".Visible", false);
+                if (data != null && data.online) {
+                    reusableOnlineMembers.add(uuid);
                 }
-            } else {
-                // No member in this slot or over limit - hide it
-                builder.set("#Member" + i + ".Visible", false);
             }
-        }
 
-        // Send update to client
-        update(true, builder);
-        int displayedCount = Math.min(Math.min(onlineMembers.size(), limit), MAX_DISPLAYED_MEMBERS);
-        LOGGER.atFine().log("[DEBUG] pushUpdate: sent %d online members to UI (total: %d, offline hidden: %d)",
-                displayedCount, memberOrder.size(), membersToShow.size() - onlineMembers.size());
+            // Create fresh builder to prevent command accumulation
+            // This is the KEY FIX - each update gets a new builder
+            UICommandBuilder freshBuilder = new UICommandBuilder();
+
+            // Update each member slot
+            for (int i = 0; i < MAX_DISPLAYED_MEMBERS; i++) {
+                if (i < reusableOnlineMembers.size() && i < limit) {
+                    UUID memberUuid = reusableOnlineMembers.get(i);
+                    MemberDisplayData data = memberData.get(memberUuid);
+                    if (data != null) {
+                        freshBuilder.set(NAME_SELECTORS[i], data.name);
+
+                        // Use cached distance string if in range
+                        String distanceStr = (data.distance >= 0 && data.distance < DISTANCE_STRINGS.length)
+                                ? DISTANCE_STRINGS[data.distance]
+                                : "(" + data.distance + "m)";
+                        freshBuilder.set(DISTANCE_SELECTORS[i], distanceStr);
+
+                        freshBuilder.set(HEALTH_SELECTORS[i], data.getHealthPercent());
+                        freshBuilder.set(STAMINA_SELECTORS[i], data.getStaminaPercent());
+                        freshBuilder.set(VISIBLE_SELECTORS[i], true);
+                    } else {
+                        freshBuilder.set(VISIBLE_SELECTORS[i], false);
+                    }
+                } else {
+                    freshBuilder.set(VISIBLE_SELECTORS[i], false);
+                }
+            }
+
+            // update(false, ...) preserves UI structure, only updates values
+            // This is safe because the UI was already loaded in build() via append()
+            update(false, freshBuilder);
+        }
     }
 }

@@ -515,6 +515,10 @@ public class PartyCommand extends AbstractPlayerCommand {
         int count = party.getFakeMembers().size();
         int entitiesRemoved = 0;
 
+        // Remove fake members from HUD BEFORE clearing from party
+        // This ensures the HUD system has access to the fake member UUIDs
+        PartyPlayerListHud.getInstance().removeFakeMembersFromHud(party);
+
         // Remove NPC entities for fake members
         for (FakeMember fakeMember : party.getFakeMembers().values()) {
             if (fakeMember.hasEntity()) {

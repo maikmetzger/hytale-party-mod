@@ -38,6 +38,9 @@ public class PartyMemberHud extends CustomUIHud {
     // Track member order for consistent display
     private final List<UUID> memberOrder = new ArrayList<>();
 
+    // Flag to track if an update is pending (data was added before builder was ready)
+    private volatile boolean pendingUpdate = false;
+
     /**
      * Data for displaying a single party member.
      */
@@ -77,7 +80,8 @@ public class PartyMemberHud extends CustomUIHud {
 
     @Override
     protected void build(@Nonnull UICommandBuilder builder) {
-        LOGGER.atInfo().log("[DEBUG] PartyMemberHud BUILD called, memberData size=%d", memberData.size());
+        LOGGER.atInfo().log("[DEBUG] PartyMemberHud BUILD called, memberData size=%d, pendingUpdate=%s",
+                memberData.size(), pendingUpdate);
 
         // Store builder reference for later updates (like HealPreviewHUD pattern)
         this.builder = builder;
@@ -86,8 +90,13 @@ public class PartyMemberHud extends CustomUIHud {
         builder.append("Hud/Party/PartyHud.ui");
         LOGGER.atInfo().log("[DEBUG] Appended Hud/Party/PartyHud.ui to builder");
 
-        // For now, just log that HUD was loaded - test basic visibility first
-        // TODO: Re-enable member visibility once basic HUD works
+        // If there were updates queued before build() was called, process them now
+        if (pendingUpdate || !memberData.isEmpty()) {
+            LOGGER.atInfo().log("[DEBUG] Processing pending update after build(), memberData size=%d", memberData.size());
+            pendingUpdate = false;
+            pushUpdate();
+        }
+
         LOGGER.atInfo().log("[DEBUG] HUD loaded successfully, memberData size=%d", memberData.size());
     }
 
@@ -163,7 +172,8 @@ public class PartyMemberHud extends CustomUIHud {
     public void setHudVisible(boolean visible) {
         LOGGER.atInfo().log("[DEBUG] PartyMemberHud.setHudVisible(%s) called", visible);
         if (builder == null) {
-            LOGGER.atWarning().log("[DEBUG] setHudVisible: builder is null, skipping");
+            LOGGER.atInfo().log("[DEBUG] setHudVisible: builder is null, marking pendingUpdate=true");
+            pendingUpdate = true;
             return;
         }
         // Set visibility on both root and container
@@ -227,7 +237,8 @@ public class PartyMemberHud extends CustomUIHud {
      */
     public void pushUpdate() {
         if (builder == null) {
-            LOGGER.atWarning().log("[DEBUG] pushUpdate: builder is null, skipping");
+            LOGGER.atInfo().log("[DEBUG] pushUpdate: builder is null, marking pendingUpdate=true");
+            pendingUpdate = true;
             return;
         }
 
@@ -256,10 +267,20 @@ public class PartyMemberHud extends CustomUIHud {
         // Apply maxDisplayedMembers limit (min of setting and MAX_DISPLAYED_MEMBERS)
         int limit = Math.min(settings.maxDisplayedMembers, MAX_DISPLAYED_MEMBERS);
 
-        // Update each member slot
+        // Filter out offline members before display
+        // This prevents empty slots from appearing for offline players
+        List<UUID> onlineMembers = new ArrayList<>();
+        for (UUID uuid : membersToShow) {
+            MemberDisplayData data = memberData.get(uuid);
+            if (data != null && data.online) {
+                onlineMembers.add(uuid);
+            }
+        }
+
+        // Update each member slot (only online members are shown)
         for (int i = 0; i < MAX_DISPLAYED_MEMBERS; i++) {
-            if (i < membersToShow.size() && i < limit) {
-                UUID memberUuid = membersToShow.get(i);
+            if (i < onlineMembers.size() && i < limit) {
+                UUID memberUuid = onlineMembers.get(i);
                 MemberDisplayData data = memberData.get(memberUuid);
                 if (data != null) {
                     // Set the name text
@@ -288,7 +309,8 @@ public class PartyMemberHud extends CustomUIHud {
 
         // Send update to client
         update(true, builder);
-        int displayedCount = Math.min(Math.min(membersToShow.size(), limit), MAX_DISPLAYED_MEMBERS);
-        LOGGER.atFine().log("[DEBUG] pushUpdate: sent %d members to UI (filtered from %d)", displayedCount, memberOrder.size());
+        int displayedCount = Math.min(Math.min(onlineMembers.size(), limit), MAX_DISPLAYED_MEMBERS);
+        LOGGER.atFine().log("[DEBUG] pushUpdate: sent %d online members to UI (total: %d, offline hidden: %d)",
+                displayedCount, memberOrder.size(), membersToShow.size() - onlineMembers.size());
     }
 }

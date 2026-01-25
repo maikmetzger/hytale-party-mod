@@ -146,7 +146,7 @@ public class Party {
     }
 
     public boolean isMember(@Nonnull UUID uuid) {
-        return !memberUuids.contains(uuid);
+        return memberUuids.contains(uuid);
     }
 
     @Nonnull
@@ -291,15 +291,37 @@ public class Party {
 
     /**
      * Gets a player's username from their UUID.
-     * This is a static utility that fetches from Universe on-demand.
+     * First checks if the player is online (Universe lookup), then falls back to the
+     * persistent name cache in the database. If online, the cache is updated.
      *
      * @param uuid the player's UUID
-     * @return the player's username, or "Unknown" if not found/offline
+     * @return the player's username, or "Unknown" if not found anywhere
      */
     @Nonnull
     public static String getPlayerName(@Nonnull UUID uuid) {
         PlayerRef ref = Universe.get().getPlayer(uuid);
-        return ref != null ? ref.getUsername() : "Unknown";
+        if (ref != null) {
+            String username = ref.getUsername();
+            // Update the cache with the current username (async to avoid blocking)
+            try {
+                PartyStorage.cachePlayerName(uuid, username);
+            } catch (Exception ignored) {
+                // Ignore cache update failures - not critical
+            }
+            return username;
+        }
+
+        // Player is offline - try to get cached name from database
+        try {
+            String cachedName = PartyStorage.getCachedPlayerName(uuid);
+            if (cachedName != null) {
+                return cachedName;
+            }
+        } catch (Exception ignored) {
+            // Ignore cache lookup failures
+        }
+
+        return "Unknown";
     }
 
     /**

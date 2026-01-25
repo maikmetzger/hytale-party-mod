@@ -86,6 +86,15 @@ public class PartyStorage {
                     FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE CASCADE
                 )
             """);
+
+            // Player name cache table - stores last known usernames for offline display
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS player_names (
+                    uuid TEXT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    last_updated INTEGER NOT NULL
+                )
+            """);
         }
 
         runMigrations();
@@ -363,6 +372,55 @@ public class PartyStorage {
         }
     }
 
+    // ==================== PLAYER NAME CACHE ====================
+
+    /**
+     * Save or update a player's username in the cache.
+     * Called when a player joins a party or logs in.
+     *
+     * @param uuid the player's UUID
+     * @param username the player's current username
+     */
+    public static void cachePlayerName(@Nonnull UUID uuid, @Nonnull String username) throws SQLException {
+        if (connection == null) return;
+
+        try (PreparedStatement stmt = connection.prepareStatement("""
+            INSERT INTO player_names (uuid, username, last_updated)
+            VALUES (?, ?, ?)
+            ON CONFLICT(uuid) DO UPDATE SET
+                username = excluded.username,
+                last_updated = excluded.last_updated
+        """)) {
+            stmt.setString(1, uuid.toString());
+            stmt.setString(2, username);
+            stmt.setLong(3, System.currentTimeMillis());
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Get a cached player name by UUID.
+     * Returns null if the player has never been cached.
+     *
+     * @param uuid the player's UUID
+     * @return the cached username or null if not found
+     */
+    @javax.annotation.Nullable
+    public static String getCachedPlayerName(@Nonnull UUID uuid) throws SQLException {
+        if (connection == null) return null;
+
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT username FROM player_names WHERE uuid = ?")) {
+            stmt.setString(1, uuid.toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("username");
+                }
+            }
+        }
+        return null;
+    }
+
     /**
      * Close the database connection.
      */
@@ -374,7 +432,7 @@ public class PartyStorage {
             }
         }
     }
-    
+
     public static Wrapper getInstance() {
         return connection;
     }

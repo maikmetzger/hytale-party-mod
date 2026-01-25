@@ -146,6 +146,46 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
         LOGGER.atInfo().log("PartyPlayerListHud shutdown");
     }
 
+    /**
+     * Removes all fake members from the HUD for all viewers in a party.
+     * Should be called BEFORE party.clearFakeMembers() to get the list of fake member UUIDs.
+     *
+     * @param party the party whose fake members are being removed
+     */
+    public void removeFakeMembersFromHud(@Nonnull Party party) {
+        Set<UUID> fakeMemberUuids = party.getFakeMembers().keySet();
+        if (fakeMemberUuids.isEmpty()) {
+            return;
+        }
+
+        LOGGER.atInfo().log("[DEBUG] removeFakeMembersFromHud: Removing %d fake members from HUD", fakeMemberUuids.size());
+
+        // For each party member, remove fake members from their HUD
+        for (UUID memberUuid : party.getMemberUuids()) {
+            ViewerHudState viewerState = viewerStates.get(memberUuid);
+            if (viewerState == null) continue;
+
+            // Remove fake member states
+            for (UUID fakeUuid : fakeMemberUuids) {
+                viewerState.memberStates.remove(fakeUuid);
+
+                // Remove from HUD display
+                if (viewerState.hudInstance != null) {
+                    try {
+                        viewerState.hudInstance.removeMember(fakeUuid);
+                    } catch (Exception e) {
+                        LOGGER.atWarning().withCause(e).log("Error removing fake member from HUD display");
+                    }
+                }
+            }
+
+            // Update HUD visibility (may need to hide if below threshold after removal)
+            updateHudVisibility(memberUuid, party);
+        }
+
+        LOGGER.atInfo().log("[DEBUG] removeFakeMembersFromHud: Completed");
+    }
+
     // ==================== CONFIGURATION ====================
 
     /**
@@ -382,6 +422,8 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
                 LOGGER.atInfo().log("[DEBUG] showHudForPlayer: Reusing existing HUD instance for %s", playerRef.getUsername());
                 state.hudInstance.setHudVisible(true);
                 state.hudVisible = true;
+                // Force immediate member data population for reconnected players
+                populateMemberDataForViewer(state, playerRef, player, party);
                 return;
             }
 
@@ -394,6 +436,10 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
             LOGGER.atInfo().log("[DEBUG] showHudForPlayer: Calling setCustomHud in world.execute...");
             player.getHudManager().setCustomHud(playerRef, hud);
             LOGGER.atInfo().log("[DEBUG] showHudForPlayer: setCustomHud DONE, hudVisible=true");
+
+            // Immediately populate member data after HUD is created
+            // This ensures HUD shows content right away instead of waiting for next tick
+            populateMemberDataForViewer(state, playerRef, player, party);
         });
     }
 
@@ -474,9 +520,14 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
     /**
      * Checks for players who are in a party but don't have their HUD initialized.
      * This handles the case where a player reconnects to an existing party.
+     * Also handles the case where a player disconnected and reconnected (stale state).
      */
     private void checkForMissingHuds() {
         PartyManager partyManager = PartyMod.getInstance().getPartyManager();
+
+        // First, clean up stale states for players who went offline
+        // This ensures reconnecting players get a fresh HUD
+        cleanupOfflinePlayerStates();
 
         // Iterate through all parties and check their members
         for (Party party : partyManager.getAllParties()) {
@@ -503,6 +554,33 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
                     // Don't set hudVisible here - let showHudForPlayer set it on success
                     // This allows retry on next tick if world wasn't ready
                     showHudForPlayer(playerUuid, party);
+                }
+            }
+        }
+    }
+
+    /**
+     * Cleans up ViewerHudState for players who have gone offline.
+     * This ensures that when they reconnect, they get a fresh HUD state
+     * instead of a stale one that still says hudVisible=true.
+     */
+    private void cleanupOfflinePlayerStates() {
+        Iterator<Map.Entry<UUID, ViewerHudState>> iterator = viewerStates.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, ViewerHudState> entry = iterator.next();
+            UUID playerUuid = entry.getKey();
+            ViewerHudState state = entry.getValue();
+
+            // Check if player is still online
+            PlayerRef playerRef = Universe.get().getPlayer(playerUuid);
+            if (playerRef == null) {
+                // Player is offline - reset their HUD state so reconnection works properly
+                if (state.hudVisible || state.hudInstance != null) {
+                    LOGGER.atInfo().log("[DEBUG] cleanupOfflinePlayerStates: Resetting stale HUD state for offline player %s",
+                            playerUuid);
+                    state.hudInstance = null;
+                    state.hudVisible = false;
+                    state.memberStates.clear();
                 }
             }
         }
@@ -771,6 +849,146 @@ public class PartyPlayerListHud extends TickingSystem<EntityStore> implements Pa
 
         // Push update to the actual HUD instance
         state.hudInstance.updateMember(memberUuid, name, health, maxHealth, stamina, maxStamina, distance, online);
+    }
+
+    // ==================== IMMEDIATE DATA POPULATION ====================
+
+    /**
+     * Immediately populates member data for a viewer's HUD.
+     * Called after HUD creation or reconnection to ensure HUD shows content right away.
+     * This prevents the 1-second delay that would otherwise occur waiting for the next tick.
+     */
+    private void populateMemberDataForViewer(@Nonnull ViewerHudState viewerState,
+                                              @Nonnull PlayerRef viewerRef,
+                                              @Nonnull Player viewer,
+                                              @Nonnull Party party) {
+        if (viewerState.hudInstance == null) {
+            LOGGER.atInfo().log("[DEBUG] populateMemberDataForViewer: hudInstance is null, skipping");
+            return;
+        }
+
+        UUID viewerUuid = viewerState.viewerUuid;
+        World currentWorld = viewer.getWorld();
+        if (currentWorld == null) {
+            LOGGER.atInfo().log("[DEBUG] populateMemberDataForViewer: world is null, skipping");
+            return;
+        }
+
+        TransformComponent viewerTransform = viewer.getTransformComponent();
+        if (viewerTransform == null) {
+            LOGGER.atInfo().log("[DEBUG] populateMemberDataForViewer: transform is null, skipping");
+            return;
+        }
+
+        double viewerX = viewerTransform.getTransform().getPosition().getX();
+        double viewerY = viewerTransform.getTransform().getPosition().getY();
+        double viewerZ = viewerTransform.getTransform().getPosition().getZ();
+
+        LOGGER.atInfo().log("[DEBUG] populateMemberDataForViewer: Populating %d members + %d fake members",
+                party.getMemberCount(), party.getFakeMembers().size());
+
+        // Populate viewer's own data first
+        MemberHudState viewerMemberState = viewerState.memberStates.computeIfAbsent(viewerUuid, MemberHudState::new);
+        populateSingleMemberData(viewerRef, viewerMemberState, viewerX, viewerY, viewerZ, currentWorld);
+
+        // Populate other party members
+        for (UUID memberUuid : party.getMembersExcept(viewerUuid)) {
+            MemberHudState memberState = viewerState.memberStates.computeIfAbsent(memberUuid, MemberHudState::new);
+            populateSingleMemberData(viewerRef, memberState, viewerX, viewerY, viewerZ, currentWorld);
+        }
+
+        // Populate fake members
+        for (FakeMember fakeMember : party.getFakeMembers().values()) {
+            MemberHudState memberState = viewerState.memberStates.computeIfAbsent(
+                    fakeMember.getUuid(), MemberHudState::new
+            );
+            populateFakeMemberData(viewerRef, memberState, fakeMember, viewerX, viewerY, viewerZ);
+        }
+
+        // Force pushUpdate to send all data to UI immediately
+        viewerState.hudInstance.pushUpdate();
+        LOGGER.atInfo().log("[DEBUG] populateMemberDataForViewer: Completed immediate HUD population");
+    }
+
+    /**
+     * Populates data for a single real member immediately (no delta check).
+     */
+    private void populateSingleMemberData(@Nonnull PlayerRef viewerRef,
+                                          @Nonnull MemberHudState memberState,
+                                          double viewerX, double viewerY, double viewerZ,
+                                          @Nonnull World currentWorld) {
+        UUID memberUuid = memberState.memberUuid;
+        PlayerRef memberRef = Universe.get().getPlayer(memberUuid);
+
+        boolean online = (memberRef != null);
+        String name = online ? memberRef.getUsername() : (memberState.lastName.isEmpty() ? "Offline" : memberState.lastName);
+
+        float health = 0;
+        float maxHealth = 0;
+        float stamina = 0;
+        float maxStamina = 0;
+        int distance = 0;
+
+        if (online) {
+            Player memberPlayer = getMemberPlayerSafe(memberRef, currentWorld);
+            if (memberPlayer != null) {
+                EntityStatMap stats = getEntityStatMapSafe(memberRef, currentWorld);
+                if (stats != null) {
+                    int healthIndex = DefaultEntityStatTypes.getHealth();
+                    int staminaIndex = DefaultEntityStatTypes.getStamina();
+
+                    EntityStatValue healthStat = stats.get(healthIndex);
+                    EntityStatValue staminaStat = stats.get(staminaIndex);
+
+                    if (healthStat != null) {
+                        health = healthStat.get();
+                        maxHealth = healthStat.getMax();
+                    }
+                    if (staminaStat != null) {
+                        stamina = staminaStat.get();
+                        maxStamina = staminaStat.getMax();
+                    }
+                }
+
+                TransformComponent transform = memberPlayer.getTransformComponent();
+                if (transform != null) {
+                    double memberX = transform.getTransform().getPosition().getX();
+                    double memberY = transform.getTransform().getPosition().getY();
+                    double memberZ = transform.getTransform().getPosition().getZ();
+                    double dx = memberX - viewerX;
+                    double dy = memberY - viewerY;
+                    double dz = memberZ - viewerZ;
+                    distance = (int) Math.sqrt(dx * dx + dy * dy + dz * dz);
+                }
+            }
+        }
+
+        // Update state and send to HUD (no delta check - we want immediate population)
+        memberState.update(health, maxHealth, stamina, maxStamina, distance, online, name);
+        sendMemberStatUpdate(viewerRef, memberUuid, name, health, maxHealth, stamina, maxStamina, distance, online);
+    }
+
+    /**
+     * Populates data for a fake member immediately (no delta check).
+     */
+    private void populateFakeMemberData(@Nonnull PlayerRef viewerRef,
+                                        @Nonnull MemberHudState memberState,
+                                        @Nonnull FakeMember fakeMember,
+                                        double viewerX, double viewerY, double viewerZ) {
+        String name = fakeMember.getName();
+        float health = 100f;
+        float maxHealth = 100f;
+        float stamina = 100f;
+        float maxStamina = 100f;
+
+        double dx = fakeMember.getX() - viewerX;
+        double dy = fakeMember.getY() - viewerY;
+        double dz = fakeMember.getZ() - viewerZ;
+        int distance = (int) Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        // Update state and send to HUD (no delta check - we want immediate population)
+        memberState.update(health, maxHealth, stamina, maxStamina, distance, true, name);
+        sendMemberStatUpdate(viewerRef, fakeMember.getUuid(), name, health, maxHealth, stamina, maxStamina, distance, true);
     }
 
     // ==================== FORCE UPDATE ====================

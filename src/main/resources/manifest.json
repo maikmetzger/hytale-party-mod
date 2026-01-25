@@ -1,8 +1,8 @@
 {
   "Group": "Gaukh",
   "Name": "PartyMod",
-  "Version": "1.1.0",
-  "Description": "Party mod",
+  "Version": "1.1.1",
+  "Description": "Create and manage parties with friends. Features party HUD with health, stamina & distance tracking, compass markers, and customizable display settings.",
   "Authors": [
     {
       "Name": "Gaukh"
